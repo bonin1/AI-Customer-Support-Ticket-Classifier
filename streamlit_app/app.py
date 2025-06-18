@@ -19,6 +19,15 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 try:
     from predict import TicketClassifier, load_classifier_from_directory, ModelEvaluator
     from data_preprocessing import TextPreprocessor
+    from ensemble_predictor import EnsemblePredictor
+    from active_learning import ActiveLearningOracle
+    from model_explainer import ModelExplainer
+    from hyperparameter_tuning import HyperparameterTuner
+    from drift_detector import DataDriftDetector
+    from model_versioning import ModelVersionManager
+    from feature_engineering import AdvancedFeatureEngineer
+    from online_learner import OnlineLearner
+    from audit_system import MLAuditSystem
 except ImportError as e:
     st.error(f"Import error: {e}")
     st.stop()
@@ -202,13 +211,16 @@ def main():
     with st.sidebar.expander("Model Information"):
         model_info = classifier.get_model_info()
         st.json(model_info)
-    
-    # Main tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
+      # Main tabs
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "🔍 Single Prediction",
         "📋 Batch Processing", 
         "📊 Analytics Dashboard",
-        "🔧 Model Management"
+        "🔧 Model Management",
+        "🕵️ Data Drift Monitor",
+        "🔄 Online Learning",
+        "🏗️ Feature Engineering",
+        "📋 Audit & Compliance"
     ])
     
     with tab1:
@@ -432,11 +444,1184 @@ def main():
         # Human-in-the-loop correction
         st.subheader("Human-in-the-Loop Corrections")
         st.info("Feature coming soon: Manual correction interface for improving model performance.")
-        
-        # Model retraining
+          # Model retraining
         st.subheader("Model Retraining")
         if st.button("🔄 Retrain Model"):
             st.info("Feature coming soon: Automated model retraining with corrected data.")
+
+    with tab5:
+        data_drift_monitor_tab()
+
+    with tab6:
+        online_learning_tab()
+
+    with tab7:
+        feature_engineering_tab()
+
+    with tab8:
+        audit_compliance_tab()
+
+# Advanced feature functions
+
+    @st.cache_resource
+    def load_ensemble_predictor():
+        """Load ensemble predictor"""
+        try:
+            ensemble = EnsemblePredictor()
+            if ensemble.load_all_models():
+                return ensemble
+        except Exception as e:
+            st.error(f"Error loading ensemble predictor: {str(e)}")
+        return None
+
+    def ensemble_prediction_tab(ensemble):
+        """Enhanced ensemble prediction tab"""
+        st.header("🤖 Ensemble Predictions")
+        st.write("Get predictions from multiple models with confidence analysis")
+        
+        if ensemble is None:
+            st.warning("Ensemble predictor not available. Multiple models needed.")
+            return
+        
+        # Text input
+        ticket_text = st.text_area(
+            "Enter your support ticket:",
+            height=150,
+            placeholder="Describe your issue here...",
+            key="ensemble_text"
+        )
+        
+        if st.button("🔮 Get Ensemble Prediction", type="primary"):
+            if ticket_text.strip():
+                with st.spinner("Running ensemble prediction..."):
+                    try:
+                        result = ensemble.predict_with_confidence(ticket_text)
+                        
+                        # Main prediction
+                        col1, col2 = st.columns([3, 1])
+                        
+                        with col1:
+                            st.success(f"**Ensemble Prediction:** {result['ensemble_prediction']}")
+                            st.metric("Ensemble Confidence", f"{result['ensemble_confidence']:.2%}")
+                            st.metric("Model Agreement", f"{result['agreement_score']:.2%}")
+                        
+                        with col2:
+                            confidence_color = "🟢" if result['ensemble_confidence'] > 0.8 else "🟡" if result['ensemble_confidence'] > 0.6 else "🔴"
+                            st.markdown(f"## {confidence_color}")
+                            
+                            if result['high_confidence']:
+                                st.success("High Confidence")
+                            else:
+                                st.warning("Low Confidence")
+                        
+                        # Individual model predictions
+                        st.subheader("Individual Model Predictions")
+                        
+                        individual_data = []
+                        for model_name, prediction in result['individual_predictions'].items():
+                            confidence = result['individual_confidences'].get(model_name, 0)
+                            individual_data.append({
+                                'Model': model_name,
+                                'Prediction': prediction,
+                                'Confidence': f"{confidence:.2%}"
+                            })
+                        
+                        if individual_data:
+                            df = pd.DataFrame(individual_data)
+                            st.dataframe(df, use_container_width=True)
+                        
+                        # Detailed probabilities
+                        with st.expander("📊 Detailed Probability Analysis"):
+                            st.write("**Ensemble Probabilities:**")
+                            ensemble_probs = result.get('ensemble_probabilities', {})
+                            if ensemble_probs:
+                                prob_df = pd.DataFrame([
+                                    {'Category': k, 'Probability': f"{v:.2%}"} 
+                                    for k, v in ensemble_probs.items()
+                                ])
+                                st.dataframe(prob_df)
+                            
+                            st.write("**Individual Model Probabilities:**")
+                            for model_name, probs in result.get('individual_probabilities', {}).items():
+                                st.write(f"*{model_name}:*")
+                                if isinstance(probs, list) and len(probs) > 0:
+                                    # Assume order matches class names
+                                    class_names = ['Billing', 'Technical Issue', 'Feature Request', 
+                                                 'Account Management', 'Product Information', 
+                                                 'Refund & Return', 'General Inquiry']
+                                    prob_dict = dict(zip(class_names[:len(probs)], probs))
+                                    st.json(prob_dict)
+                    
+                    except Exception as e:
+                        st.error(f"Error in ensemble prediction: {str(e)}")
+            else:
+                st.warning("Please enter a ticket description.")
+
+    def explainability_tab(explainer, ensemble):
+        """Model explainability and interpretability tab"""
+        st.header("🔍 Model Explainability")
+        st.write("Understand how the model makes decisions")
+        
+        # Text input for explanation
+        text_to_explain = st.text_area(
+            "Enter text to explain:",
+            height=100,
+            placeholder="Enter a support ticket to see how the model interprets it...",
+            key="explain_text"
+        )
+        
+        # Explanation type selection
+        explain_type = st.selectbox(
+            "Explanation Type:",
+            ["LIME Local Explanation", "Feature Importance", "Counterfactual Examples"]
+        )
+        
+        if st.button("🔍 Generate Explanation"):
+            if text_to_explain.strip():
+                with st.spinner("Generating explanation..."):
+                    try:
+                        if explain_type == "LIME Local Explanation":
+                            if ensemble:
+                                explanation = explainer.explain_prediction_lime(text_to_explain, ensemble)
+                                
+                                if 'error' not in explanation:
+                                    st.subheader("LIME Explanation")
+                                    st.write("**Local feature importance for this prediction:**")
+                                    
+                                    # Display explanation
+                                    local_exp = explanation.get('local_explanation', [])
+                                    if local_exp:
+                                        exp_df = pd.DataFrame(local_exp, columns=['Feature', 'Importance'])
+                                        exp_df['Importance'] = exp_df['Importance'].astype(float)
+                                        
+                                        # Color code positive/negative importance
+                                        fig = px.bar(
+                                            exp_df, 
+                                            x='Importance', 
+                                            y='Feature',
+                                            orientation='h',
+                                            color='Importance',
+                                            color_continuous_scale='RdBu_r',
+                                            title='Feature Importance for Prediction'
+                                        )
+                                        st.plotly_chart(fig, use_container_width=True)
+                                    
+                                    # Display prediction probabilities
+                                    pred_probs = explanation.get('prediction', [])
+                                    if pred_probs:
+                                        st.write("**Prediction Probabilities:**")
+                                        class_names = explainer._get_class_names()
+                                        prob_dict = dict(zip(class_names[:len(pred_probs)], pred_probs))
+                                        st.json(prob_dict)
+                                else:
+                                    st.error(f"Error generating LIME explanation: {explanation['error']}")
+                            else:
+                                st.warning("Ensemble model required for LIME explanations")
+                        
+                        elif explain_type == "Feature Importance":
+                            st.subheader("Global Feature Importance")
+                            st.info("Feature importance analysis requires training data. This would show the most important words/phrases for each category.")
+                            
+
+                            # Placeholder for feature importance
+                            sample_features = {
+                                'Billing': ['payment', 'charge', 'invoice', 'refund', 'subscription'],
+                                'Technical Issue': ['error', 'bug', 'crash', 'broken', 'not working'],
+                                'Feature Request': ['feature', 'suggest', 'enhancement', 'add', 'improvement']
+                            }
+                            
+                            for category, features in sample_features.items():
+                                st.write(f"**{category}:** {', '.join(features)}")
+                        
+                        elif explain_type == "Counterfactual Examples":
+                            if ensemble:
+                                st.subheader("Counterfactual Explanations")
+                                st.write("*What minimal changes would flip the prediction?*")
+                                
+                                counterfactuals = explainer.generate_counterfactual_examples(
+                                    text_to_explain, ensemble
+                                )
+                                
+                                if 'error' not in counterfactuals:
+                                    original_class = counterfactuals.get('original_prediction', 'Unknown')
+                                    target_class = counterfactuals.get('target_class', 'Unknown')
+                                    
+                                    st.write(f"**Original prediction:** {original_class}")
+                                    st.write(f"**Target class:** {target_class}")
+                                    
+                                    cf_examples = counterfactuals.get('counterfactuals', [])
+                                    if cf_examples:
+                                        for i, cf in enumerate(cf_examples[:3]):  # Show top 3
+                                            with st.expander(f"Counterfactual {i+1}: {cf['change']}"):
+                                                st.write(f"**Original:** {cf['original_text']}")
+                                                st.write(f"**Modified:** {cf['modified_text']}")
+                                                st.write(f"**New Prediction:** {cf['new_class']}")
+                                                st.write(f"**Confidence Change:** {cf['confidence_change']:+.2%}")
+                                    else:
+                                        st.info("No counterfactual examples found")
+                                else:
+                                    st.error(f"Error generating counterfactuals: {counterfactuals['error']}")
+                            else:
+                                st.warning("Ensemble model required for counterfactual explanations")
+                    
+                    except Exception as e:
+                        st.error(f"Error generating explanation: {str(e)}")
+            else:
+                st.warning("Please enter text to explain.")
+        
+        # Model bias analysis section
+        st.subheader("🎯 Bias Analysis")
+        if st.button("Run Bias Analysis"):
+            with st.spinner("Analyzing potential bias..."):
+                try:
+                    # This would require actual training data
+                    st.info("Bias analysis requires access to training data with sensitive attributes.")
+                    st.write("**Potential bias indicators to monitor:**")
+                    st.write("- Prediction differences based on language style")
+                    st.write("- Performance variations across user demographics")  
+                    st.write("- Systematic misclassification patterns")
+                    
+                    # Placeholder bias results
+                    bias_results = {
+                        'urgency_bias': 0.05,
+                        'gender_bias': 0.02,
+                        'age_bias': 0.03
+                    }
+                    
+                    for bias_type, score in bias_results.items():
+                        color = "🟢" if score < 0.05 else "🟡" if score < 0.1 else "🔴"
+                        st.write(f"{color} **{bias_type.replace('_', ' ').title()}:** {score:.3f}")
+                
+                except Exception as e:
+                    st.error(f"Error in bias analysis: {str(e)}")
+
+    def active_learning_tab(oracle, ensemble):
+        """Active learning and human-in-the-loop tab"""
+        st.header("⚡ Active Learning & Human Feedback")
+        st.write("Improve model performance through targeted human feedback")
+        
+        # Sample uncertain predictions section
+        st.subheader("🎯 Uncertain Predictions")
+        st.write("Review predictions that the model is uncertain about")
+        
+        # Generate sample uncertain predictions
+        sample_texts = [
+            "The app is slow sometimes",
+            "Need help with something",
+            "Having trouble with the new update"
+        ]
+        
+        if st.button("🔍 Find Uncertain Predictions"):
+            if ensemble:
+                with st.spinner("Analyzing predictions for uncertainty..."):
+                    try:
+                        predictions = []
+                        for text in sample_texts:
+                            result = ensemble.predict_with_confidence(text)
+                            predictions.append(result)
+                        
+                        uncertain_samples = oracle.identify_uncertain_samples(predictions, sample_texts)
+                        
+                        if uncertain_samples:
+                            st.success(f"Found {len(uncertain_samples)} uncertain predictions")
+                            
+                            for i, sample in enumerate(uncertain_samples[:3]):  # Show top 3
+                                with st.expander(f"Uncertain Sample {i+1} (Score: {sample['uncertainty_score']:.3f})"):
+                                    st.write(f"**Text:** {sample['text']}")
+                                    st.write(f"**Current Prediction:** {sample['prediction']}")
+                                    st.write(f"**Confidence:** {sample['confidence']:.2%}")
+                                    
+                                    # Human correction interface
+                                    st.write("**Provide Correction:**")
+                                    correct_category = st.selectbox(
+                                        "Correct category:",
+                                        ['Billing', 'Technical Issue', 'Feature Request', 
+                                         'Account Management', 'Product Information', 
+                                         'Refund & Return', 'General Inquiry'],
+                                        key=f"correct_{i}"
+                                    )
+                                    
+                                    if st.button(f"Submit Correction {i+1}", key=f"submit_{i}"):
+                                        # Record feedback
+                                        oracle.record_human_feedback(
+                                            sample_index=sample['index'],
+                                            original_text=sample['text'],
+                                            predicted_label=sample['prediction'],
+                                            correct_label=correct_category,
+                                            confidence=sample['confidence']
+                                        )
+                                        st.success("Feedback recorded!")
+                        else:
+                            st.info("No highly uncertain predictions found")
+                            
+                    except Exception as e:
+                        st.error(f"Error finding uncertain predictions: {str(e)}")
+            else:
+                st.warning("Ensemble model required for uncertainty analysis")
+        
+        # Feedback summary
+        st.subheader("📊 Feedback Summary")
+        
+        # Mock feedback data
+        feedback_summary = {
+            'total_feedback': len(oracle.feedback_data),
+            'accuracy_from_feedback': oracle._calculate_feedback_accuracy() if oracle.feedback_data else 0.0,
+            'common_errors': oracle.analyze_error_patterns() if oracle.feedback_data else {'error_patterns': {}}
+        }
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Feedback", feedback_summary['total_feedback'])
+        
+        with col2:
+            st.metric("Feedback Accuracy", f"{feedback_summary['accuracy_from_feedback']:.1%}")
+        
+        with col3:
+            error_patterns = feedback_summary['common_errors']['error_patterns']
+            st.metric("Error Patterns", len(error_patterns))
+        
+        # Retraining recommendations
+        if oracle.feedback_data:
+            st.subheader("🔄 Retraining Recommendations")
+            
+            retraining_strategy = oracle.suggest_retraining_strategy()
+            
+            if retraining_strategy['should_retrain']:
+                st.warning("Model retraining recommended!")
+                
+                for strategy in retraining_strategy['strategies']:
+                    st.write(f"- **{strategy['type'].replace('_', ' ').title()}**: {strategy['target']}")
+                
+                if st.button("🚀 Start Retraining"):
+                    st.info("Retraining feature would be implemented here")
+            else:
+                st.success("No retraining needed yet")
+                st.write(retraining_strategy['reason'])
+        
+        # Export feedback data
+        if oracle.feedback_data:
+            st.subheader("📤 Export Feedback Data")
+            
+            if st.button("Export Training Data"):
+                # Would export corrected samples for retraining
+                st.info("Training data export feature would save corrected samples to file")
+
+    def single_prediction_tab(classifier):
+        """Original single prediction tab"""
+        st.header("Single Ticket Classification")
+        
+        # Text input
+        ticket_text = st.text_area(
+            "Enter your support ticket:",
+            height=150,
+            placeholder="Describe your issue here..."
+        )
+        
+        # Classification options
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            include_confidence = st.checkbox("Show confidence scores", value=True)
+        
+        with col2:
+            include_explanation = st.checkbox("Show explanation", value=False)
+        
+        if st.button("🔍 Classify Ticket", type="primary"):
+            if ticket_text.strip():
+                with st.spinner("Analyzing ticket..."):
+                    try:
+                        # Make prediction
+                        prediction = classifier.predict(ticket_text)
+                        confidence = prediction['confidence']
+                        category = prediction['predicted_class']
+                        
+                        # Display result
+                        st.markdown('<div class="prediction-result">', unsafe_allow_html=True)
+                        
+                        col1, col2 = st.columns([2, 1])
+                        
+                        with col1:
+                            st.success(f"**Predicted Category:** {category}")
+                            
+                            if include_confidence:
+                                # Confidence meter
+                                confidence_color = "green" if confidence > 0.8 else "orange" if confidence > 0.6 else "red"
+                                st.markdown(f"""
+                                <div style="background-color: {confidence_color}; 
+                                           width: {confidence*100}%; 
+                                           height: 20px; 
+                                           border-radius: 10px; 
+                                           margin: 10px 0;">
+                                </div>
+                                <p><strong>Confidence:</strong> {confidence:.2%}</p>
+                                """, unsafe_allow_html=True)
+                        
+                        with col2:
+                            # Category icon/color
+                            category_icons = {
+                                "Billing": "💳",
+                                "Technical Issue": "🔧",
+                                "Feature Request": "💡",
+                                "Account Management": "👤",
+                                "Product Information": "📋",
+                                "Refund & Return": "↩️",
+                                "General Inquiry": "❓"
+                            }
+                            icon = category_icons.get(category, "🎫")
+                            st.markdown(f"<div style='font-size: 4rem; text-align: center;'>{icon}</div>", 
+                                      unsafe_allow_html=True)
+                        
+                        # Additional information
+                        if include_explanation:
+                            with st.expander("📊 Detailed Analysis"):
+                                st.write("**Model Information:**")
+                                info = classifier.get_model_info()
+                                st.json(info)
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
+                        
+                    except Exception as e:
+                        st.error(f"Error during prediction: {str(e)}")
+            else:
+                st.warning("Please enter a ticket description.")
+
+    def batch_processing_tab(classifier):
+        """Original batch processing tab with enhancements"""
+        st.header("Batch Processing")
+        
+        # File upload
+        uploaded_file = st.file_uploader(
+            "Upload CSV file with tickets",
+            type=['csv'],
+            help="CSV should have a 'text' column with ticket descriptions"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Load data
+                df = pd.read_csv(uploaded_file)
+                st.success(f"Loaded {len(df)} tickets")
+                
+                # Show preview
+                st.subheader("Data Preview")
+                st.dataframe(df.head(), use_container_width=True)
+                
+                # Select text column
+                text_columns = df.select_dtypes(include=['object']).columns.tolist()
+                text_column = st.selectbox("Select text column:", text_columns)
+                
+                if st.button("🚀 Process All Tickets"):
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    results = []
+                    for i, text in enumerate(df[text_column]):
+                        try:
+                            prediction = classifier.predict(str(text))
+                            results.append({
+                                'Original Text': text,
+                                'Predicted Category': prediction['predicted_class'],
+                                'Confidence': prediction['confidence']
+                            })
+                        except Exception as e:
+                            results.append({
+                                'Original Text': text,
+                                'Predicted Category': 'Error',
+                                'Confidence': 0.0
+                            })
+                        
+                        # Update progress
+                        progress = (i + 1) / len(df)
+                        progress_bar.progress(progress)
+                        status_text.text(f"Processing ticket {i+1}/{len(df)}")
+                    
+                    # Create results dataframe
+                    results_df = pd.DataFrame(results)
+                    
+                    # Display results
+                    st.subheader("Classification Results")
+                    st.dataframe(results_df, use_container_width=True)
+                    
+                    # Summary statistics
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        avg_confidence = results_df['Confidence'].mean()
+                        st.metric("Average Confidence", f"{avg_confidence:.2%}")
+                    
+                    with col2:
+                        high_conf_count = len(results_df[results_df['Confidence'] > 0.8])
+                        st.metric("High Confidence", f"{high_conf_count}/{len(results_df)}")
+                    
+                    with col3:
+                        unique_categories = results_df['Predicted Category'].nunique()
+                        st.metric("Unique Categories", unique_categories)
+                    
+                    # Download results
+                    csv = results_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download Results",
+                        data=csv,
+                        file_name=f"classification_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+                    
+            except Exception as e:
+                st.error(f"Error processing file: {str(e)}")
+
+    def analytics_dashboard_tab():
+        """Enhanced analytics dashboard"""
+        st.header("Analytics Dashboard")
+        
+        # Load sample data for visualization
+        try:
+            from utils.dashboard_utils import create_sample_analytics_data, create_category_distribution_chart, create_confidence_distribution_chart
+            
+            # Generate sample data
+            analytics_data = create_sample_analytics_data()
+            
+            # Key metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric("Total Tickets", analytics_data['total_tickets'])
+            
+            with col2:
+                st.metric("Avg Confidence", f"{analytics_data['avg_confidence']:.2%}")
+            
+            with col3:
+                st.metric("Most Common", analytics_data['most_common_category'])
+            
+            with col4:
+                st.metric("High Confidence", f"{analytics_data['high_confidence_rate']:.1%}")
+            
+            # Charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Category Distribution")
+                fig1 = create_category_distribution_chart(analytics_data['category_counts'])
+                st.plotly_chart(fig1, use_container_width=True)
+            
+            with col2:
+                st.subheader("Confidence Distribution")
+                fig2 = create_confidence_distribution_chart(analytics_data['confidence_scores'])
+                st.plotly_chart(fig2, use_container_width=True)
+            
+            # Time series (if available)
+            st.subheader("Ticket Volume Over Time")
+            time_data = analytics_data.get('time_series', [])
+            if time_data:
+                time_df = pd.DataFrame(time_data)
+                fig3 = px.line(time_df, x='date', y='count', title='Daily Ticket Volume')
+                st.plotly_chart(fig3, use_container_width=True)
+            else:                st.info("No time series data available")
+                
+        except Exception as e:
+            st.error(f"Error loading analytics: {str(e)}")
+
+def get_available_models():
+    """Get list of available trained models"""
+    models_dir = os.path.join(os.path.dirname(__file__), '..', 'models', 'saved_models')
+    if not os.path.exists(models_dir):
+        return []
+    
+    model_files = [f for f in os.listdir(models_dir) if f.endswith('.h5') or f.endswith('.pkl')]
+    model_names = []
+    
+    for file in model_files:
+        if '_' in file:
+            model_name = file.split('_')[0]
+            if model_name not in model_names:
+                model_names.append(model_name)    
+    return model_names
+
+def model_management_tab():
+    """Model management and comparison tab."""
+    st.header("🔧 Model Management")
+    
+    available_models = load_model_list()
+    
+    if not available_models:
+        st.warning("No trained models found.")
+        return
+    
+    # Model comparison
+    st.subheader("Available Models")
+    
+    models_data = []
+    for model_name in available_models:
+        try:
+            temp_classifier = load_classifier(model_name)
+            info = temp_classifier.get_model_info()
+            models_data.append({
+                'Model Name': model_name,
+                'Type': info.get('model_type', 'Unknown'),
+                'Accuracy': info.get('test_accuracy', 'N/A'),
+                'Classes': info.get('num_classes', 'N/A'),
+                'Training Samples': info.get('training_samples', 'N/A')
+            })
+        except Exception:
+            models_data.append({
+                'Model Name': model_name,
+                'Type': 'Unknown',
+                'Accuracy': 'N/A',
+                'Classes': 'N/A',
+                'Training Samples': 'N/A'
+            })
+        
+        if models_data:
+            models_df = pd.DataFrame(models_data)
+            st.dataframe(models_df, use_container_width=True)
+        
+        # Hyperparameter tuning section
+        st.subheader("🎛️ Hyperparameter Tuning")
+        
+        model_type = st.selectbox(
+            "Select model type for tuning:",
+            ['lstm', 'cnn', 'random_forest', 'svm', 'logistic_regression']
+        )
+        
+        n_trials = st.slider("Number of trials:", 10, 100, 20)
+        
+        if st.button("🎯 Start Hyperparameter Tuning"):
+            with st.spinner("Running hyperparameter optimization..."):
+                try:
+                    tuner = HyperparameterTuner()
+                    st.info(f"Starting {n_trials} trials for {model_type} model...")
+                    st.info("This is a demonstration. In practice, this would run actual optimization.")
+                    
+                    # Mock results
+                    best_params = {
+                        'lstm': {'embedding_dim': 128, 'lstm_units': 64, 'dropout_rate': 0.3},
+                        'random_forest': {'n_estimators': 200, 'max_depth': 20, 'min_samples_split': 5}
+                    }.get(model_type, {})
+                    
+                    st.success("Hyperparameter tuning completed!")
+                    st.write("**Best Parameters:**")
+                    st.json(best_params)
+                    
+                except Exception as e:
+                    st.error(f"Error in hyperparameter tuning: {str(e)}")
+        
+        # Model deployment section
+        st.subheader("🚀 Model Deployment")
+        
+        if st.button("Deploy Best Model"):
+            st.info("Model deployment feature would update the active model")
+        
+        # Model retraining
+        st.subheader("🔄 Model Retraining")
+        retrain_options = st.multiselect(
+            "Retraining options:",
+            ["Include human feedback", "Use latest data", "Hyperparameter optimization"]
+        )
+        
+        if st.button("Start Retraining"):
+            if retrain_options:
+                st.info(f"Starting retraining with options: {', '.join(retrain_options)}")
+            else:
+                st.warning("Please select retraining options")
+
+def data_drift_monitor_tab():
+    """Data drift monitoring tab."""
+    st.header("🕵️ Data Drift Monitor")
+    
+    st.markdown("""
+    Monitor your model's input data for distribution changes that might affect performance.
+    """)
+    
+    # Initialize drift detector
+    if 'drift_detector' not in st.session_state:
+        st.session_state.drift_detector = DataDriftDetector()
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("Upload Reference Data")
+        uploaded_file = st.file_uploader(
+            "Upload reference/baseline data (CSV)",
+            type=['csv'],
+            help="Upload historical data to establish baseline distribution"
+        )
+        
+        if uploaded_file is not None:
+            reference_data = pd.read_csv(uploaded_file)
+            st.write("Reference data preview:")
+            st.dataframe(reference_data.head())
+            
+            if st.button("Fit Reference Data"):
+                with st.spinner("Fitting reference data..."):
+                    try:
+                        if 'text' in reference_data.columns:
+                            texts = reference_data['text'].tolist()
+                            labels = reference_data.get('category', None)
+                            if labels is not None:
+                                labels = labels.tolist()
+                            
+                            st.session_state.drift_detector.fit_reference_data(texts, labels)
+                            st.success("Reference data fitted successfully!")
+                        else:
+                            st.error("Reference data must have a 'text' column")
+                    except Exception as e:
+                        st.error(f"Error fitting reference data: {e}")
+    
+    with col2:
+        st.subheader("Drift Detection Settings")
+        drift_threshold = st.slider("Drift Threshold", 0.01, 0.2, 0.05, 0.01)
+        window_size = st.number_input("Window Size", 100, 5000, 1000)
+        
+        if st.button("Update Settings"):
+            st.session_state.drift_detector.drift_threshold = drift_threshold
+            st.session_state.drift_detector.window_size = window_size
+            st.success("Settings updated!")
+    
+    # Drift detection section
+    st.subheader("Check for Data Drift")
+    
+    # Option 1: Upload new data
+    new_data_file = st.file_uploader(
+        "Upload new data to check for drift (CSV)",
+        type=['csv'],
+        key="drift_check_file"
+    )
+    
+    # Option 2: Enter text manually
+    manual_texts = st.text_area(
+        "Or enter texts manually (one per line):",
+        height=100,
+        placeholder="Enter ticket texts, one per line..."
+    )
+    
+    if st.button("Detect Drift"):
+        try:
+            if new_data_file is not None:
+                new_data = pd.read_csv(new_data_file)
+                if 'text' in new_data.columns:
+                    texts = new_data['text'].tolist()
+                    labels = new_data.get('category', None)
+                    if labels is not None:
+                        labels = labels.tolist()
+                else:
+                    st.error("New data must have a 'text' column")
+                    return
+            elif manual_texts.strip():
+                texts = [text.strip() for text in manual_texts.split('\n') if text.strip()]
+                labels = None
+            else:
+                st.warning("Please upload data or enter texts manually")
+                return
+            
+            with st.spinner("Detecting drift..."):
+                drift_report = st.session_state.drift_detector.detect_drift(texts, labels)
+                
+                if 'error' in drift_report:
+                    st.error(f"Error: {drift_report['error']}")
+                else:
+                    # Display drift results
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        drift_status = "🚨 DETECTED" if drift_report['drift_detected'] else "✅ NONE"
+                        st.metric("Drift Status", drift_status)
+                    
+                    with col2:
+                        st.metric("Drift Score", f"{drift_report['drift_score']:.3f}")
+                    
+                    with col3:
+                        st.metric("Sample Size", drift_report['sample_size'])
+                    
+                    # Detailed results
+                    st.subheader("Drift Detection Methods")
+                    methods_df = []
+                    for method, result in drift_report['drift_methods'].items():
+                        if 'error' not in result:
+                            methods_df.append({
+                                'Method': method.upper(),
+                                'Drift Detected': '✅' if result.get('drift_detected', False) else '❌',
+                                'Details': str(result)[:100] + '...' if len(str(result)) > 100 else str(result)
+                            })
+                    
+                    if methods_df:
+                        st.dataframe(pd.DataFrame(methods_df))
+                    
+                    # Recommendations
+                    st.subheader("Recommendations")
+                    for rec in drift_report.get('recommendations', []):
+                        st.write(f"• {rec}")
+        
+        except Exception as e:
+            st.error(f"Error detecting drift: {e}")
+    
+    # Drift history
+    st.subheader("Drift Detection History")
+    drift_summary = st.session_state.drift_detector.get_drift_summary()
+    st.json(drift_summary)
+
+def online_learning_tab():
+    """Online learning tab."""
+    st.header("🔄 Online Learning System")
+    
+    st.markdown("""
+    Continuously improve your model with user feedback and real-time learning.
+    """)
+    
+    # Initialize online learner
+    if 'online_learner' not in st.session_state:
+        st.session_state.online_learner = OnlineLearner()
+    
+    # Learning statistics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    stats = st.session_state.online_learner.get_learning_stats()
+    
+    with col1:
+        st.metric("Total Predictions", stats['total_predictions'])
+    
+    with col2:
+        st.metric("Feedback Received", stats['feedback_received'])
+    
+    with col3:
+        st.metric("Model Updates", stats['model_updates'])
+    
+    with col4:
+        accuracy = stats['current_accuracy']
+        st.metric("Current Accuracy", f"{accuracy:.1%}" if accuracy > 0 else "N/A")
+    
+    # Feedback collection
+    st.subheader("Provide Feedback")
+    
+    with st.form("feedback_form"):
+        text_input = st.text_area("Ticket Text", height=100)
+        predicted_category = st.selectbox("Predicted Category", 
+                                        ["Billing", "Technical", "General", "Complaint", "Compliment"])
+        true_category = st.selectbox("Correct Category", 
+                                   ["Billing", "Technical", "General", "Complaint", "Compliment"])
+        confidence = st.slider("Model Confidence", 0.0, 1.0, 0.8)
+        user_id = st.text_input("User ID (optional)")
+        
+        if st.form_submit_button("Submit Feedback"):
+            if text_input.strip():
+                success = st.session_state.online_learner.add_feedback(
+                    text_input,
+                    predicted_category,
+                    true_category,
+                    confidence,
+                    user_id if user_id else None
+                )
+                
+                if success:
+                    st.success("Feedback submitted successfully!")
+                else:
+                    st.error("Error submitting feedback")
+            else:
+                st.warning("Please enter ticket text")
+    
+    # Learning settings
+    st.subheader("Learning Configuration")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        learning_rate = st.slider("Learning Rate", 0.001, 0.1, 0.01, 0.001)
+        batch_size = st.number_input("Batch Size", 5, 100, 10)
+    
+    with col2:
+        update_frequency = st.number_input("Update Frequency", 10, 500, 50)
+        confidence_threshold = st.slider("Confidence Threshold", 0.5, 0.95, 0.7)
+    
+    if st.button("Update Learning Settings"):
+        st.session_state.online_learner.learning_rate = learning_rate
+        st.session_state.online_learner.batch_size = batch_size
+        st.session_state.online_learner.update_frequency = update_frequency
+        st.session_state.online_learner.confidence_threshold = confidence_threshold
+        st.success("Settings updated!")
+    
+    # Feedback summary
+    st.subheader("Feedback Summary")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        days = st.selectbox("Time Period", [7, 14, 30], index=0)
+        
+        if st.button("Generate Summary"):
+            try:
+                summary = st.session_state.online_learner.get_feedback_summary(days)
+                st.json(summary)
+            except Exception as e:
+                st.error(f"Error generating summary: {e}")
+    
+    with col2:
+        if st.button("Export Feedback Data"):
+            try:
+                filepath = f"feedback_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                st.session_state.online_learner.export_feedback_data(filepath, days=30)
+                st.success(f"Data exported to {filepath}")
+            except Exception as e:
+                st.error(f"Error exporting data: {e}")
+
+def feature_engineering_tab():
+    """Advanced feature engineering tab."""
+    st.header("🏗️ Advanced Feature Engineering")
+    
+    st.markdown("""
+    Create sophisticated features from your text data using advanced NLP techniques.
+    """)
+    
+    # Initialize feature engineer
+    if 'feature_engineer' not in st.session_state:
+        st.session_state.feature_engineer = AdvancedFeatureEngineer()
+      # Feature engineering settings
+    st.subheader("Feature Engineering Configuration")
+    
+    st.info("""
+    **Parameter Tips:**
+    - **Min Document Frequency**: For small samples (< 5 texts), use 1 to avoid filtering all terms
+    - **Max Document Frequency**: 0.95 filters very common words (appearing in >95% of texts)
+    - **N-grams**: (1,3) captures single words, bigrams, and trigrams
+    """)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        max_features = st.number_input("Max TF-IDF Features", 1000, 50000, 10000)
+        min_df = st.number_input("Min Document Frequency", 1, 10, 1)
+        max_df = st.slider("Max Document Frequency", 0.5, 1.0, 0.95)
+    
+    with col2:
+        ngram_min = st.number_input("N-gram Min", 1, 3, 1)
+        ngram_max = st.number_input("N-gram Max", 1, 5, 3)
+        num_topics = st.number_input("Number of Topics (LDA)", 5, 50, 20)
+    
+    # Sample data for demonstration
+    st.subheader("Try Feature Engineering")
+    
+    sample_texts = st.text_area(
+        "Enter sample texts (one per line):",
+        value="I can't log into my account\nMy bill is incorrect\nGreat service, thank you!",
+        height=100
+    )
+    
+    if st.button("Extract Features"):
+        if sample_texts.strip():
+            texts = [text.strip() for text in sample_texts.split('\n') if text.strip()]
+            
+            with st.spinner("Extracting features..."):
+                try:
+                    # Configure feature engineer
+                    st.session_state.feature_engineer.max_features = max_features
+                    st.session_state.feature_engineer.min_df = min_df
+                    st.session_state.feature_engineer.max_df = max_df
+                    st.session_state.feature_engineer.ngram_range = (ngram_min, ngram_max)
+                    st.session_state.feature_engineer.num_topics = num_topics
+                    
+                    # Adjust parameters for small samples to avoid pruning all terms
+                    num_texts = len(texts)
+                    if num_texts <= 5 and min_df > 1:
+                        st.warning(f"Small sample size ({num_texts} texts). Adjusting min_df to 1 to avoid over-pruning.")
+                        st.session_state.feature_engineer.min_df = 1
+                    
+                    # Fit and transform
+                    st.session_state.feature_engineer.fit(texts)
+                    features = st.session_state.feature_engineer.transform(texts)
+                    
+                    # Display results
+                    st.success(f"Extracted {features.shape[1]} features from {features.shape[0]} texts")
+                    
+                    # Feature categories
+                    st.subheader("Feature Categories")
+                    feature_categories = st.session_state.feature_engineer.get_top_features_by_category(n_features=10)
+                    
+                    for category, feature_list in feature_categories.items():
+                        if feature_list:
+                            with st.expander(f"{category.title()} Features ({len(feature_list)})"):
+                                st.write(feature_list[:10])  # Show top 10
+                    
+                    # Feature matrix preview
+                    st.subheader("Feature Matrix Preview")
+                    feature_df = pd.DataFrame(
+                        features[:, :10],  # Show first 10 features
+                        columns=st.session_state.feature_engineer.feature_names[:10],
+                        index=[f"Text {i+1}" for i in range(len(texts))]
+                    )
+                    st.dataframe(feature_df)
+                    
+                except Exception as e:
+                    st.error(f"Error extracting features: {e}")
+        else:
+            st.warning("Please enter some sample texts")
+    
+    # Feature analysis
+    st.subheader("Feature Analysis Tools")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Analyze Feature Importance"):
+            st.info("Feature importance requires a trained model. Train a model first.")
+    
+    with col2:
+        if st.button("Export Feature Pipeline"):
+            try:
+                filepath = f"feature_pipeline_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pkl"
+                st.session_state.feature_engineer.save_pipeline(filepath)
+                st.success(f"Pipeline saved to {filepath}")
+            except Exception as e:
+                st.error(f"Error saving pipeline: {e}")
+
+def audit_compliance_tab():
+    """Audit and compliance tab."""
+    st.header("📋 Audit & Compliance Dashboard")
+    
+    st.markdown("""
+    Monitor model usage, ensure compliance, and maintain audit trails.
+    """)
+    
+    # Initialize audit system
+    if 'audit_system' not in st.session_state:
+        st.session_state.audit_system = MLAuditSystem()
+    
+    # Compliance status
+    st.subheader("Compliance Status")
+    
+    compliance_status = st.session_state.audit_system.get_compliance_status()
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Active Rules", len([r for r in compliance_status['compliance_rules'].values() if r['enabled']]))
+    
+    with col2:
+        st.metric("Unresolved Violations", compliance_status['unresolved_violations'])
+    
+    with col3:
+        st.metric("Data Retention (Days)", compliance_status['data_retention_days'])
+    
+    # Audit report
+    st.subheader("Audit Report")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        start_date = st.date_input("Start Date", datetime.now() - timedelta(days=30))
+        end_date = st.date_input("End Date", datetime.now())
+    
+    with col2:
+        event_types = st.multiselect(
+            "Event Types", 
+            ["prediction", "training", "access", "model_update"],
+            default=["prediction"]
+        )
+    
+    if st.button("Generate Audit Report"):
+        try:
+            report = st.session_state.audit_system.get_audit_report(
+                start_date=datetime.combine(start_date, datetime.min.time()),
+                end_date=datetime.combine(end_date, datetime.max.time()),
+                event_types=event_types if event_types else None
+            )
+            
+            # Display summary
+            st.subheader("Report Summary")
+            summary_cols = st.columns(4)
+            
+            with summary_cols[0]:
+                st.metric("Total Events", report['summary']['total_events'])
+            
+            with summary_cols[1]:
+                st.metric("Unique Users", report['summary']['unique_users'])
+            
+            with summary_cols[2]:
+                st.metric("Models Accessed", report['summary']['models_accessed'])
+            
+            with summary_cols[3]:
+                st.metric("Violations", report['summary']['compliance_violations'])
+            
+            # Event statistics
+            if report['event_statistics']:
+                st.subheader("Event Statistics")
+                event_df = pd.DataFrame(list(report['event_statistics'].items()), 
+                                      columns=['Event Type', 'Count'])
+                fig = px.bar(event_df, x='Event Type', y='Count', title="Events by Type")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            # Top users
+            if report['top_users']:
+                st.subheader("Top Users")
+                users_df = pd.DataFrame(list(report['top_users'].items()), 
+                                      columns=['User ID', 'Activity Count'])
+                st.dataframe(users_df)
+            
+            # Full report
+            with st.expander("Full Report Details"):
+                st.json(report)
+        
+        except Exception as e:
+            st.error(f"Error generating audit report: {e}")
+    
+    # GDPR section
+    st.subheader("GDPR Compliance")
+    
+    if compliance_status['gdpr_enabled']:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Create GDPR Request**")
+            request_type = st.selectbox("Request Type", 
+                                      ["access", "deletion", "portability"])
+            user_id = st.text_input("User ID")
+            email = st.text_input("Email")
+            
+            if st.button("Create GDPR Request"):
+                if user_id or email:
+                    try:
+                        request_id = st.session_state.audit_system.create_gdpr_request(
+                            request_type, user_id, email
+                        )
+                        st.success(f"GDPR request created: {request_id}")
+                    except Exception as e:
+                        st.error(f"Error creating request: {e}")
+                else:
+                    st.warning("Please provide either User ID or Email")
+        
+        with col2:
+            st.write("**Process GDPR Request**")
+            request_id = st.text_input("Request ID to Process")
+            
+            if st.button("Process Request"):
+                if request_id:
+                    try:
+                        result = st.session_state.audit_system.process_gdpr_request(request_id)
+                        st.json(result)
+                    except Exception as e:
+                        st.error(f"Error processing request: {e}")
+                else:
+                    st.warning("Please provide Request ID")
+    else:
+        st.info("GDPR features are not enabled")
+    
+    # Data cleanup
+    st.subheader("Data Management")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("Clean Expired Data"):
+            try:
+                deleted_count = st.session_state.audit_system.cleanup_expired_data()
+                st.success(f"Deleted {deleted_count} expired records")
+            except Exception as e:
+                st.error(f"Error cleaning data: {e}")
+    
+    with col2:
+        if st.button("Export Audit Data"):
+            try:
+                filepath = f"audit_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                st.session_state.audit_system.export_audit_data(filepath)
+                st.success(f"Audit data exported to {filepath}")
+            except Exception as e:
+                st.error(f"Error exporting data: {e}")
 
 if __name__ == "__main__":
     main()

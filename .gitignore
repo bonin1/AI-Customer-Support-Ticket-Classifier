@@ -30,6 +30,7 @@ MANIFEST
 /models/saved_models
 /models/audit.db
 /models/feedback.db
+/models/monitoring.db
 
 
 # PyInstaller

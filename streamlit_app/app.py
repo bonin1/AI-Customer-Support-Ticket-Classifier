@@ -11,6 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import json
+import time
 from typing import Dict, Any, List
 
 # Add src directory to path
@@ -29,6 +30,8 @@ try:
     from online_learner import OnlineLearner
     from audit_system import MLAuditSystem
     from response_generator import AIResponseGenerator
+    from streaming_processor import StreamingProcessor, StreamingTicket, WebSocketStreaming
+    from multimodal_classifier import MultiModalClassifier, MultiModalInput
 except ImportError as e:
     st.error(f"Import error: {e}")
     st.stop()
@@ -208,11 +211,12 @@ def main():
         st.error("Failed to load the selected model.")
         return
     
-    # Model info
-    with st.sidebar.expander("Model Information"):
+    # Model info    with st.sidebar.expander("Model Information"):
         model_info = classifier.get_model_info()
-        st.json(model_info)      # Main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+        st.json(model_info)
+    
+    # Main tabs
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
         "🔍 Single Prediction",
         "📋 Batch Processing", 
         "📊 Analytics Dashboard",
@@ -221,7 +225,9 @@ def main():
         "🔄 Online Learning",
         "🏗️ Feature Engineering",
         "📋 Audit & Compliance",
-        "🤖 AI Response Generator"
+        "🤖 AI Response Generator",
+        "📡 Real-time Streaming",
+        "🎭 Multi-modal Processing"
     ])
     
     with tab1:
@@ -721,13 +727,19 @@ def main():
         online_learning_tab()
 
     with tab7:
+        
         feature_engineering_tab()
-
     with tab8:
         audit_compliance_tab()
 
     with tab9:
         ai_response_generator_tab()
+    
+    with tab10:
+        streaming_processing_tab()
+    
+    with tab11:
+        multimodal_processing_tab()
 
 # Advanced feature functions
 
@@ -1521,11 +1533,14 @@ def data_drift_monitor_tab():
         
         except Exception as e:
             st.error(f"Error detecting drift: {e}")
-    
-    # Drift history
+      # Drift history
     st.subheader("Drift Detection History")
-    drift_summary = st.session_state.drift_detector.get_drift_summary()
-    st.json(drift_summary)
+    
+    if 'drift_detector' in st.session_state:
+        drift_summary = st.session_state.drift_detector.get_drift_summary()
+        st.json(drift_summary)
+    else:
+        st.info("Drift detector not initialized yet.")
 
 def online_learning_tab():
     """Online learning tab."""
@@ -2185,9 +2200,462 @@ def ai_response_generator_tab():
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No responses generated yet. Generate some responses to see statistics.")
-            
     except Exception as e:
         st.error(f"Error loading statistics: {str(e)}")
+
+def streaming_processing_tab():
+    """Real-time streaming processing tab."""
+    st.header("📡 Real-time Streaming Processing")
+    
+    st.markdown("""
+    Process customer support tickets in real-time using streaming data sources.
+    """)
+    
+    # Initialize streaming processor
+    if 'streaming_processor' not in st.session_state:
+        try:
+            classifier = st.session_state.get('classifier')
+            if classifier:
+                response_generator = st.session_state.get('response_generator')
+                st.session_state.streaming_processor = StreamingProcessor(
+                    classifier=classifier,
+                    response_generator=response_generator,
+                    enable_monitoring=True,
+                    enable_drift_detection=True
+                )
+                st.success("Streaming processor initialized!")
+            else:
+                st.error("No classifier available. Please load a model first.")
+                return
+        except Exception as e:
+            st.error(f"Error initializing streaming processor: {str(e)}")
+            return
+    
+    streaming_processor = st.session_state.streaming_processor
+    
+    # Configuration Section
+    st.subheader("Streaming Configuration")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Processing Settings**")
+        batch_size = st.slider("Batch Size", min_value=1, max_value=50, value=10)
+        batch_timeout = st.slider("Batch Timeout (seconds)", min_value=1.0, max_value=30.0, value=5.0)
+        
+        # Update processor settings
+        streaming_processor.batch_size = batch_size
+        streaming_processor.batch_timeout = batch_timeout
+    
+    with col2:
+        st.write("**Streaming Sources**")
+        enable_websocket = st.checkbox("WebSocket Server", value=False)
+        websocket_port = st.number_input("WebSocket Port", min_value=1000, max_value=9999, value=8765)
+        
+        enable_simulation = st.checkbox("Ticket Simulation", value=True)
+        simulation_interval = st.slider("Simulation Interval (seconds)", min_value=1, max_value=30, value=5)
+    
+    # Control Section
+    st.subheader("Streaming Control")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("🚀 Start Streaming", type="primary"):
+            try:
+                streaming_processor.start_streaming()
+                
+                # Add result callback to store results in session state
+                if 'streaming_results' not in st.session_state:
+                    st.session_state.streaming_results = []
+                
+                def result_callback(result):
+                    st.session_state.streaming_results.append(result)
+                    if len(st.session_state.streaming_results) > 100:  # Keep only last 100
+                        st.session_state.streaming_results = st.session_state.streaming_results[-100:]
+                
+                streaming_processor.add_result_callback(result_callback)
+                st.success("Streaming started!")
+                
+            except Exception as e:
+                st.error(f"Error starting streaming: {str(e)}")
+    
+    with col2:
+        if st.button("⏹️ Stop Streaming"):
+            try:
+                streaming_processor.stop_streaming()
+                st.success("Streaming stopped!")
+            except Exception as e:
+                st.error(f"Error stopping streaming: {str(e)}")
+    
+    with col3:
+        if st.button("🔄 Reset"):
+            if 'streaming_results' in st.session_state:
+                st.session_state.streaming_results = []
+            st.success("Results cleared!")
+    
+    # Status Section
+    st.subheader("Streaming Status")
+    
+    stats = streaming_processor.get_stats()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Status", "Running" if stats['is_running'] else "Stopped")
+    
+    with col2:
+        st.metric("Total Processed", stats['total_processed'])
+    
+    with col3:
+        st.metric("Queue Size", stats['queue_size'])
+    
+    with col4:
+        if stats.get('throughput_per_second'):
+            st.metric("Throughput/sec", f"{stats['throughput_per_second']:.1f}")
+        else:
+            st.metric("Avg Processing Time", f"{stats['avg_processing_time']:.1f}ms")
+    
+    # Manual Ticket Injection
+    st.subheader("Manual Ticket Input")
+    
+    with st.form("manual_ticket_form"):
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            ticket_text = st.text_area("Ticket Message", height=100)
+        
+        with col2:
+            customer_id = st.text_input("Customer ID", value="test_customer")
+            priority = st.selectbox("Priority", ["low", "medium", "high"])
+            channel = st.selectbox("Channel", ["manual", "email", "chat", "phone"])
+        
+        if st.form_submit_button("Add Ticket to Stream"):
+            if ticket_text.strip():
+                try:
+                    ticket = StreamingTicket(
+                        ticket_id=f"manual_{int(time.time())}",
+                        customer_message=ticket_text,
+                        timestamp=datetime.now(),
+                        channel=channel,
+                        priority=priority,
+                        customer_id=customer_id
+                    )
+                    
+                    streaming_processor.add_ticket(ticket)
+                    st.success("Ticket added to stream!")
+                    
+                except Exception as e:
+                    st.error(f"Error adding ticket: {str(e)}")
+            else:
+                st.warning("Please enter a ticket message.")
+    
+    # Results Display
+    st.subheader("Recent Results")
+    
+    if 'streaming_results' in st.session_state and st.session_state.streaming_results:
+        results = st.session_state.streaming_results[-20:]  # Show last 20 results
+        
+        # Create DataFrame for display
+        results_data = []
+        for result in reversed(results):  # Most recent first
+            results_data.append({
+                'Ticket ID': result.ticket_id,
+                'Category': result.predicted_category,
+                'Confidence': f"{result.confidence:.2f}",
+                'Processing Time (ms)': f"{result.processing_time_ms:.1f}",
+                'Escalation': "Yes" if result.escalation_required else "No",
+                'Drift Detected': "Yes" if result.drift_detected else "No",
+                'Timestamp': result.timestamp.strftime('%H:%M:%S') if result.timestamp else 'N/A'
+            })
+        
+        results_df = pd.DataFrame(results_data)
+        st.dataframe(results_df, use_container_width=True)
+        
+        # Download results
+        if st.button("📥 Download Results"):
+            csv = results_df.to_csv(index=False)
+            st.download_button(
+                label="Download CSV",
+                data=csv,
+                file_name=f"streaming_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+    else:
+        st.info("No streaming results yet. Start streaming and add some tickets to see results here.")
+
+def multimodal_processing_tab():
+    """Multi-modal processing tab."""
+    st.header("🎭 Multi-modal Processing")
+    
+    st.markdown("""
+    Process customer support tickets with multiple data types: text, images, audio, and documents.
+    """)
+    
+    # Initialize multi-modal classifier
+    if 'multimodal_classifier' not in st.session_state:
+        try:
+            classifier = st.session_state.get('classifier')
+            if classifier:
+                st.session_state.multimodal_classifier = MultiModalClassifier(
+                    text_classifier=classifier,
+                    enable_ocr=True,
+                    enable_image_classification=True,
+                    enable_audio_processing=True,
+                    enable_document_parsing=True
+                )
+                st.success("Multi-modal classifier initialized!")
+            else:
+                st.error("No text classifier available. Please load a model first.")
+                return
+        except Exception as e:
+            st.error(f"Error initializing multi-modal classifier: {str(e)}")
+            return
+    
+    multimodal_classifier = st.session_state.multimodal_classifier
+    
+    # System Capabilities
+    st.subheader("System Capabilities")
+    
+    capabilities = multimodal_classifier.get_capabilities()
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Text Processing", "✅" if capabilities['text_processing'] else "❌")
+        st.metric("Image Processing", "✅" if capabilities['image_processing'] else "❌")
+    
+    with col2:
+        st.metric("OCR", "✅" if capabilities['ocr'] else "❌")
+        st.metric("Image Classification", "✅" if capabilities['image_classification'] else "❌")
+    
+    with col3:
+        st.metric("Audio Processing", "✅" if capabilities['audio_processing'] else "❌")
+        st.metric("Document Parsing", "✅" if capabilities['document_parsing'] else "❌")
+    
+    with col4:
+        st.metric("Vision Models", "✅" if capabilities['vision_models'] else "❌")
+        st.metric("Streaming Support", "✅" if capabilities['streaming_support'] else "❌")
+    
+    st.divider()
+    
+    # Multi-modal Input Section
+    st.subheader("Multi-modal Input")
+    
+    # Text input
+    st.write("**Text Message**")
+    text_input = st.text_area("Customer message", height=100, 
+                             placeholder="Enter the customer's message here...")
+    
+    # Image input
+    st.write("**Images**")
+    uploaded_images = st.file_uploader(
+        "Upload images (screenshots, photos, receipts, etc.)",
+        type=['png', 'jpg', 'jpeg', 'gif', 'bmp'],
+        accept_multiple_files=True,
+        help="Upload up to 5 images for analysis"
+    )
+    
+    # Audio input
+    st.write("**Audio**")
+    uploaded_audio = st.file_uploader(
+        "Upload audio file (voicemail, recorded call, etc.)",
+        type=['wav', 'mp3', 'flac', 'm4a'],
+        help="Audio will be processed for transcription and analysis"
+    )
+    
+    # Document input
+    st.write("**Documents**")
+    uploaded_documents = st.file_uploader(
+        "Upload documents (PDF, DOCX, TXT files)",
+        type=['pdf', 'docx', 'txt', 'log', 'csv'],
+        accept_multiple_files=True,
+        help="Upload up to 10 documents for text extraction"
+    )
+    
+    # Processing button
+    if st.button("🔍 Process Multi-modal Input", type="primary"):
+        if not any([text_input.strip(), uploaded_images, uploaded_audio, uploaded_documents]):
+            st.warning("Please provide at least one type of input.")
+        else:
+            with st.spinner("Processing multi-modal input..."):
+                try:
+                    # Prepare input data
+                    input_data = MultiModalInput()
+                    
+                    # Text
+                    if text_input.strip():
+                        input_data.text = text_input
+                    
+                    # Images
+                    if uploaded_images:
+                        input_data.images = []
+                        for img_file in uploaded_images[:5]:  # Limit to 5 images
+                            # Save temporarily and add path
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{img_file.name.split('.')[-1]}") as tmp_file:
+                                tmp_file.write(img_file.getvalue())
+                                input_data.images.append(tmp_file.name)
+                    
+                    # Audio
+                    if uploaded_audio:
+                        import tempfile
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_audio.name.split('.')[-1]}") as tmp_file:
+                            tmp_file.write(uploaded_audio.getvalue())
+                            input_data.audio = tmp_file.name
+                    
+                    # Documents
+                    if uploaded_documents:
+                        input_data.attachments = []
+                        for doc_file in uploaded_documents[:10]:  # Limit to 10 documents
+                            import tempfile
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{doc_file.name.split('.')[-1]}") as tmp_file:
+                                tmp_file.write(doc_file.getvalue())
+                                input_data.attachments.append(tmp_file.name)
+                    
+                    # Process
+                    result = multimodal_classifier.classify_multimodal(input_data)
+                    
+                    # Display results
+                    st.success("Multi-modal processing completed!")
+                    
+                    # Main prediction
+                    st.subheader("Classification Result")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Predicted Category", result.predicted_category)
+                    
+                    with col2:
+                        st.metric("Confidence", f"{result.confidence:.2f}")
+                    
+                    with col3:
+                        st.metric("Processing Time", f"{result.processing_details['processing_time_seconds']:.2f}s")
+                    
+                    # Modal contributions
+                    st.subheader("Modal Contributions")
+                    
+                    if result.modal_contributions:
+                        contrib_df = pd.DataFrame(
+                            list(result.modal_contributions.items()),
+                            columns=['Modality', 'Contribution']
+                        )
+                        
+                        fig = px.bar(contrib_df, x='Modality', y='Contribution',
+                                   title="Contribution of Each Modality")
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Extracted features
+                    st.subheader("Extracted Features")
+                    
+                    with st.expander("Text Features"):
+                        if result.extracted_features.text_features:
+                            st.json(result.extracted_features.text_features)
+                        else:
+                            st.info("No text features extracted")
+                    
+                    with st.expander("Image Features"):
+                        if result.extracted_features.image_features:
+                            features = result.extracted_features.image_features
+                            
+                            if features.get('extracted_text'):
+                                st.write("**Extracted Text from Images:**")
+                                st.write(features['extracted_text'])
+                            
+                            if features.get('descriptions'):
+                                st.write("**Image Descriptions:**")
+                                for i, desc in enumerate(features['descriptions'], 1):
+                                    st.write(f"{i}. {desc}")
+                            
+                            if features.get('classifications'):
+                                st.write("**Image Classifications:**")
+                                for i, classification in enumerate(features['classifications'], 1):
+                                    st.write(f"{i}. {classification['label']} (confidence: {classification['confidence']:.2f})")
+                        else:
+                            st.info("No image features extracted")
+                    
+                    with st.expander("Audio Features"):
+                        if result.extracted_features.audio_features:
+                            st.json(result.extracted_features.audio_features)
+                        else:
+                            st.info("No audio features extracted")
+                    
+                    with st.expander("Document Features"):
+                        if result.extracted_features.document_features:
+                            features = result.extracted_features.document_features
+                            
+                            if features.get('extracted_text'):
+                                st.write("**Extracted Text from Documents:**")
+                                st.text_area("", features['extracted_text'][:1000] + "..." if len(features['extracted_text']) > 1000 else features['extracted_text'], height=200, disabled=True)
+                            
+                            if features.get('document_types'):
+                                st.write("**Document Types:**")
+                                st.write(", ".join(features['document_types']))
+                        else:
+                            st.info("No document features extracted")
+                    
+                    # Combined text
+                    with st.expander("Combined Text for Classification"):
+                        st.text_area("", result.extracted_features.combined_text, height=150, disabled=True)
+                    
+                    # Processing details
+                    with st.expander("Processing Details"):
+                        st.json(result.processing_details)
+                    
+                    # Cleanup temporary files
+                    try:
+                        if input_data.images:
+                            for img_path in input_data.images:
+                                if os.path.exists(img_path):
+                                    os.unlink(img_path)
+                        
+                        if input_data.audio and os.path.exists(input_data.audio):
+                            os.unlink(input_data.audio)
+                        
+                        if input_data.attachments:
+                            for doc_path in input_data.attachments:
+                                if os.path.exists(doc_path):
+                                    os.unlink(doc_path)
+                    except:
+                        pass  # Ignore cleanup errors
+                    
+                except Exception as e:
+                    st.error(f"Error processing multi-modal input: {str(e)}")
+                    st.exception(e)
+    
+    st.divider()
+    
+    # Statistics
+    st.subheader("Processing Statistics")
+    
+    stats = multimodal_classifier.get_processing_stats()
+    
+    if stats['total_processed'] > 0:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.metric("Total Processed", stats['total_processed'])
+            
+            usage_stats = stats['modality_usage']
+            
+            st.write("**Modality Usage:**")
+            for modality, count in usage_stats.items():
+                if count > 0:
+                    percentage = (count / stats['total_processed']) * 100
+                    st.write(f"- {modality.replace('_', ' ').title()}: {count} ({percentage:.1f}%)")
+        
+        with col2:
+            # Create pie chart of modality usage
+            usage_data = [(k.replace('_', ' ').title(), v) for k, v in stats['modality_usage'].items() if v > 0]
+            
+            if usage_data:
+                usage_df = pd.DataFrame(usage_data, columns=['Type', 'Count'])
+                fig = px.pie(usage_df, values='Count', names='Type', 
+                           title="Modality Usage Distribution")
+                st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No multi-modal processing performed yet.")
 
 if __name__ == "__main__":
     main()

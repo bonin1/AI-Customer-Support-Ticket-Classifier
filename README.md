@@ -6,8 +6,10 @@ An enterprise-grade, intelligent system that automatically classifies customer s
 
 - **Automated Classification**: Multi-model ensemble classification with confidence scoring
 - **AI Response Generation**: Intelligent response generation using open-source LLMs from Hugging Face
+- **Real-time Streaming**: Process tickets in real-time with WebSocket and Kafka support
+- **Multi-modal Processing**: Handle text, images, audio, and documents in a single workflow
 - **Advanced Models**: LSTM, BERT, ensemble methods with hyperparameter optimization
-- **Interactive Dashboard**: Comprehensive Streamlit UI with 9 specialized tabs
+- **Interactive Dashboard**: Comprehensive Streamlit UI with 11 specialized tabs
 - **Real-time Analytics**: Live performance monitoring and drift detection
 - **Human-in-the-Loop**: Active learning with intelligent feedback collection
 - **Enterprise Features**: Audit trails, GDPR compliance, and model versioning
@@ -21,6 +23,22 @@ An enterprise-grade, intelligent system that automatically classifies customer s
 - Response quality scoring and confidence assessment
 - Batch response generation capabilities
 - Customizable response templates with Jinja2 templating
+
+### 📡 **Real-time Streaming Processing**
+- WebSocket server for real-time ticket ingestion
+- Kafka integration for enterprise streaming workflows
+- Configurable batch processing with adaptive timeouts
+- Live performance monitoring and throughput tracking
+- Automatic drift detection on streaming data
+- Scalable architecture supporting high-volume ticket streams
+
+### 🎭 **Multi-modal Classification**
+- Text analysis with advanced NLP preprocessing
+- Image processing with OCR text extraction (Tesseract, EasyOCR)
+- Computer vision analysis using CLIP and BLIP models
+- Audio processing with transcription capabilities
+- Document parsing (PDF, DOCX, TXT files)
+- Unified confidence scoring across all modalities
 
 ### 🕵️ **Data Drift Detection**
 - Real-time monitoring of input data distribution changes
@@ -63,10 +81,13 @@ An enterprise-grade, intelligent system that automatically classifies customer s
 - **Advanced NLP**: spaCy, NLTK, transformers, LIME, SHAP
 - **Machine Learning**: TensorFlow/Keras, scikit-learn, Optuna
 - **LLM Integration**: Hugging Face Transformers, PyTorch, Jinja2
+- **Computer Vision**: OpenCV, PIL, CLIP, BLIP, Tesseract, EasyOCR
+- **Streaming**: WebSockets, Kafka, asyncio, aiohttp
+- **Multi-modal**: LibROSA (audio), PyMuPDF (documents), python-docx
 - **MLOps**: Model versioning, drift detection, online learning
 - **Data Science**: Pandas, NumPy, SciPy for statistical analysis
 - **Visualization**: Plotly, Matplotlib, Seaborn
-- **UI**: Streamlit with 9 specialized dashboards
+- **UI**: Streamlit with 11 specialized dashboards
 - **Compliance**: SQLite for audit logs, GDPR tools
 
 ## 📁 Project Structure
@@ -96,6 +117,8 @@ An enterprise-grade, intelligent system that automatically classifies customer s
 │   ├── feature_engineering.py # Advanced feature extraction
 │   ├── online_learner.py      # Online learning and feedback
 │   ├── response_generator.py  # AI Response Generation with LLMs
+│   ├── streaming_processor.py # Real-time streaming processing
+│   ├── multimodal_classifier.py # Multi-modal classification system
 │   └── audit_system.py        # Audit trails and compliance
 ├── streamlit_app/
 │   ├── app.py                 # Main Streamlit application (9 tabs)
@@ -112,7 +135,7 @@ An enterprise-grade, intelligent system that automatically classifies customer s
 
 ## 🖥️ Streamlit Dashboard Tabs
 
-The web interface includes 9 specialized tabs:
+The web interface includes 11 specialized tabs:
 
 1. **🔍 Single Prediction** - Individual ticket classification with confidence scoring
 2. **📋 Batch Processing** - Bulk ticket processing and analysis
@@ -123,6 +146,8 @@ The web interface includes 9 specialized tabs:
 7. **🏗️ Feature Engineering** - Advanced NLP feature extraction and analysis
 8. **📋 Audit & Compliance** - Compliance monitoring and GDPR tools
 9. **🤖 AI Response Generator** - Intelligent response generation using open-source LLMs
+10. **📡 Real-time Streaming** - Live ticket processing with WebSocket and Kafka support
+11. **🎭 Multi-modal Processing** - Text, image, audio, and document classification
 
 ## 🚀 Quick Start
 

@@ -14,8 +14,8 @@ from collections import defaultdict, deque
 import threading
 import time
 import smtplib
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -403,7 +403,7 @@ class ModelPerformanceMonitor:
     def _send_email_alert(self, alert: PerformanceAlert):
         """Send email alert"""
         try:
-            msg = MimeMultipart()
+            msg = MIMEMultipart()
             msg['From'] = self.alert_config['email_username']
             msg['To'] = ', '.join(self.alert_config['email_recipients'])
             msg['Subject'] = f"Model Performance Alert: {alert.alert_type}"
@@ -424,7 +424,7 @@ class ModelPerformanceMonitor:
             Please investigate and take appropriate action.
             """
             
-            msg.attach(MimeText(body, 'plain'))
+            msg.attach(MIMEText(body, 'plain'))
             
             server = smtplib.SMTP(self.alert_config['email_smtp_server'], 
                                 self.alert_config['email_smtp_port'])

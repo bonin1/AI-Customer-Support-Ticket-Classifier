@@ -28,6 +28,7 @@ try:
     from feature_engineering import AdvancedFeatureEngineer
     from online_learner import OnlineLearner
     from audit_system import MLAuditSystem
+    from response_generator import AIResponseGenerator
 except ImportError as e:
     st.error(f"Import error: {e}")
     st.stop()
@@ -210,9 +211,8 @@ def main():
     # Model info
     with st.sidebar.expander("Model Information"):
         model_info = classifier.get_model_info()
-        st.json(model_info)
-      # Main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        st.json(model_info)      # Main tabs
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "🔍 Single Prediction",
         "📋 Batch Processing", 
         "📊 Analytics Dashboard",
@@ -220,7 +220,8 @@ def main():
         "🕵️ Data Drift Monitor",
         "🔄 Online Learning",
         "🏗️ Feature Engineering",
-        "📋 Audit & Compliance"
+        "📋 Audit & Compliance",
+        "🤖 AI Response Generator"
     ])
     
     with tab1:
@@ -343,72 +344,337 @@ def main():
             
             except Exception as e:
                 st.error(f"Error processing file: {e}")
-    
     with tab3:
-        st.header("Analytics Dashboard")
+        st.header("📊 Comprehensive Analytics Dashboard")
         
-        # Sample data for demonstration
-        st.info("Upload and process tickets in the Batch Processing tab to see analytics here.")
-        
-        # If we have session state with processed data, show analytics
-        if 'processed_df' in st.session_state:
-            df = st.session_state.processed_df
+        # Load all available ticket data
+        @st.cache_data
+        def load_all_ticket_data():
+            """Load all ticket data from available sources."""
+            all_data = []
+            data_sources = []
             
-            # Key metrics
-            st.subheader("Key Metrics")
+            # Define data file paths
+            data_files = [
+                ("Sample Tickets", "data/sample/sample_tickets.csv"),
+                ("Training Data", "data/sample/train_tickets.csv"),
+                ("Test Data", "data/sample/test_tickets.csv")
+            ]
+            
+            for source_name, file_path in data_files:
+                try:
+                    full_path = os.path.join(os.path.dirname(__file__), '..', file_path)
+                    if os.path.exists(full_path):
+                        df = pd.read_csv(full_path)
+                        df['data_source'] = source_name
+                        df['file_location'] = file_path
+                        all_data.append(df)
+                        data_sources.append({
+                            'source': source_name,
+                            'path': file_path,
+                            'count': len(df),
+                            'status': 'Loaded'
+                        })
+                    else:
+                        data_sources.append({
+                            'source': source_name,
+                            'path': file_path,
+                            'count': 0,
+                            'status': 'Not Found'
+                        })
+                except Exception as e:
+                    data_sources.append({
+                        'source': source_name,
+                        'path': file_path,
+                        'count': 0,
+                        'status': f'Error: {str(e)}'
+                    })
+            
+            # Check for processed data in session state
+            if 'processed_df' in st.session_state:
+                processed_df = st.session_state.processed_df.copy()
+                processed_df['data_source'] = 'Processed (Session)'
+                processed_df['file_location'] = 'session_state'
+                all_data.append(processed_df)
+                data_sources.append({
+                    'source': 'Processed (Session)',
+                    'path': 'session_state',
+                    'count': len(processed_df),
+                    'status': 'Loaded'
+                })
+            
+            combined_df = pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
+            return combined_df, data_sources
+        
+        # Load data
+        with st.spinner("Loading ticket data..."):
+            combined_df, data_sources = load_all_ticket_data()
+        
+        # Data Source Overview
+        st.subheader("📁 Data Sources Overview")
+        
+        if data_sources:
+            sources_df = pd.DataFrame(data_sources)
+            
+            # Display data sources table
+            st.dataframe(sources_df, use_container_width=True)
+            
+            # Summary metrics
             col1, col2, col3, col4 = st.columns(4)
             
             with col1:
-                st.metric("Total Tickets", len(df))
-            with col2:
-                avg_conf = df['confidence'].mean()
-                st.metric("Avg Confidence", f"{avg_conf:.1%}")
-            with col3:
-                high_conf = len(df[df['confidence'] >= 0.8])
-                st.metric("High Confidence", f"{high_conf}")
-            with col4:
-                categories = df['predicted_category'].nunique()
-                st.metric("Categories", categories)
+                total_sources = len(data_sources)
+                st.metric("Total Sources", total_sources)
             
-            # Charts
+            with col2:
+                loaded_sources = len([s for s in data_sources if s['status'] == 'Loaded'])
+                st.metric("Loaded Sources", loaded_sources)
+            
+            with col3:
+                total_tickets = sum([s['count'] for s in data_sources if isinstance(s['count'], int)])
+                st.metric("Total Tickets", total_tickets)
+            
+            with col4:
+                if combined_df.empty:
+                    st.metric("Data Status", "No Data")
+                else:
+                    st.metric("Data Status", "✅ Ready")
+        
+        if not combined_df.empty:
+            st.divider()
+            
+            # Overall Statistics
+            st.subheader("📈 Overall Statistics")
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
+            
+            with col1:
+                st.metric("Total Tickets", len(combined_df))
+            
+            with col2:
+                unique_categories = combined_df['category'].nunique()
+                st.metric("Unique Categories", unique_categories)
+            
+            with col3:
+                if 'priority' in combined_df.columns:
+                    high_priority = len(combined_df[combined_df['priority'] == 'High'])
+                    st.metric("High Priority", high_priority)
+                else:
+                    st.metric("High Priority", "N/A")
+            
+            with col4:
+                if 'channel' in combined_df.columns:
+                    unique_channels = combined_df['channel'].nunique()
+                    st.metric("Channels", unique_channels)
+                else:
+                    st.metric("Channels", "N/A")
+            
+            with col5:
+                date_range = "N/A"
+                if 'timestamp' in combined_df.columns:
+                    try:
+                        combined_df['timestamp'] = pd.to_datetime(combined_df['timestamp'])
+                        date_range = f"{(combined_df['timestamp'].max() - combined_df['timestamp'].min()).days} days"
+                    except:
+                        pass
+                st.metric("Date Range", date_range)
+            
+            # Visualizations
+            st.subheader("📊 Data Visualizations")
+            
+            # Category Analysis
             col1, col2 = st.columns(2)
             
             with col1:
-                # Category distribution
-                cat_counts = df['predicted_category'].value_counts()
-                fig = px.bar(x=cat_counts.values, y=cat_counts.index, orientation='h',
+                st.write("**Category Distribution**")
+                cat_counts = combined_df['category'].value_counts()
+                fig = px.pie(values=cat_counts.values, names=cat_counts.index, 
                            title="Tickets by Category")
                 st.plotly_chart(fig, use_container_width=True)
             
             with col2:
-                # Confidence distribution
-                fig = px.histogram(df, x='confidence', nbins=20,
-                                 title="Confidence Distribution")
+                st.write("**Data Source Distribution**")
+                source_counts = combined_df['data_source'].value_counts()
+                fig = px.bar(x=source_counts.values, y=source_counts.index, 
+                           orientation='h', title="Tickets by Data Source")
                 st.plotly_chart(fig, use_container_width=True)
-        
-        else:
-            # Show sample analytics with dummy data
-            st.subheader("Sample Analytics")
             
-            # Create sample data
-            sample_data = {
-                'Category': ['Billing', 'Technical Issue', 'Feature Request', 'Account Management', 'General Inquiry'],
-                'Count': [45, 32, 18, 25, 15],
-                'Avg Confidence': [0.85, 0.78, 0.92, 0.73, 0.68]
-            }
-            sample_df = pd.DataFrame(sample_data)
+            # Priority and Channel Analysis (if available)
+            if 'priority' in combined_df.columns and 'channel' in combined_df.columns:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Priority Distribution**")
+                    priority_counts = combined_df['priority'].value_counts()
+                    fig = px.bar(x=priority_counts.index, y=priority_counts.values,
+                               title="Tickets by Priority")
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    st.write("**Channel Distribution**")
+                    channel_counts = combined_df['channel'].value_counts()
+                    fig = px.bar(x=channel_counts.index, y=channel_counts.values,
+                               title="Tickets by Channel")
+                    st.plotly_chart(fig, use_container_width=True)
             
-            col1, col2 = st.columns(2)
+            # Time Analysis (if timestamp available)
+            if 'timestamp' in combined_df.columns:
+                try:
+                    combined_df['timestamp'] = pd.to_datetime(combined_df['timestamp'])
+                    combined_df['date'] = combined_df['timestamp'].dt.date
+                    combined_df['hour'] = combined_df['timestamp'].dt.hour
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.write("**Tickets Over Time**")
+                        daily_counts = combined_df['date'].value_counts().sort_index()
+                        fig = px.line(x=daily_counts.index, y=daily_counts.values,
+                                    title="Daily Ticket Volume")
+                        fig.update_xaxis(title="Date")
+                        fig.update_yaxis(title="Number of Tickets")
+                        st.plotly_chart(fig, use_container_width=True)
+                    
+                    with col2:
+                        st.write("**Tickets by Hour of Day**")
+                        hourly_counts = combined_df['hour'].value_counts().sort_index()
+                        fig = px.bar(x=hourly_counts.index, y=hourly_counts.values,
+                                   title="Ticket Volume by Hour")
+                        fig.update_xaxis(title="Hour of Day")
+                        fig.update_yaxis(title="Number of Tickets")
+                        st.plotly_chart(fig, use_container_width=True)
+                except:
+                    st.info("Could not parse timestamp data for time analysis.")
+            
+            # Category-Priority Heatmap (if both available)
+            if 'priority' in combined_df.columns and 'category' in combined_df.columns:
+                st.write("**Category vs Priority Heatmap**")
+                heatmap_data = pd.crosstab(combined_df['category'], combined_df['priority'])
+                fig = px.imshow(heatmap_data.values, 
+                              labels=dict(x="Priority", y="Category", color="Count"),
+                              x=heatmap_data.columns, 
+                              y=heatmap_data.index,
+                              title="Category vs Priority Distribution")
+                st.plotly_chart(fig, use_container_width=True)
+            
+            st.divider()
+            
+            # Raw Data Display
+            st.subheader("🗂️ All Tickets - Raw Data")
+            
+            # Filters
+            col1, col2, col3 = st.columns(3)
             
             with col1:
-                fig = px.bar(sample_df, x='Count', y='Category', orientation='h',
-                           title="Sample Category Distribution")
-                st.plotly_chart(fig, use_container_width=True)
+                # Category filter
+                categories = ['All'] + sorted(combined_df['category'].unique().tolist())
+                selected_category = st.selectbox("Filter by Category", categories)
             
             with col2:
-                fig = px.bar(sample_df, x='Category', y='Avg Confidence',
-                           title="Average Confidence by Category")
-                st.plotly_chart(fig, use_container_width=True)
+                # Data source filter
+                sources = ['All'] + sorted(combined_df['data_source'].unique().tolist())
+                selected_source = st.selectbox("Filter by Data Source", sources)
+            
+            with col3:
+                # Priority filter (if available)
+                if 'priority' in combined_df.columns:
+                    priorities = ['All'] + sorted(combined_df['priority'].unique().tolist())
+                    selected_priority = st.selectbox("Filter by Priority", priorities)
+                else:
+                    selected_priority = 'All'
+            
+            # Apply filters
+            filtered_df = combined_df.copy()
+            
+            if selected_category != 'All':
+                filtered_df = filtered_df[filtered_df['category'] == selected_category]
+            
+            if selected_source != 'All':
+                filtered_df = filtered_df[filtered_df['data_source'] == selected_source]
+            
+            if selected_priority != 'All' and 'priority' in combined_df.columns:
+                filtered_df = filtered_df[filtered_df['priority'] == selected_priority]
+            
+            # Display filtered results
+            st.write(f"**Showing {len(filtered_df)} of {len(combined_df)} tickets**")
+            
+            # Column selection for display
+            available_columns = filtered_df.columns.tolist()
+            default_columns = [col for col in ['ticket_id', 'customer_message', 'category', 'priority', 'channel', 'timestamp', 'data_source'] if col in available_columns]
+            
+            selected_columns = st.multiselect(
+                "Select columns to display",
+                available_columns,
+                default=default_columns
+            )
+            
+            if selected_columns:
+                display_df = filtered_df[selected_columns].copy()
+                
+                # Format for better display
+                if 'customer_message' in display_df.columns:
+                    display_df['customer_message'] = display_df['customer_message'].apply(
+                        lambda x: x[:100] + "..." if len(str(x)) > 100 else x
+                    )
+                
+                st.dataframe(display_df, use_container_width=True, height=400)
+                
+                # Download filtered data
+                csv = filtered_df.to_csv(index=False)
+                st.download_button(
+                    label="📥 Download Filtered Data",
+                    data=csv,
+                    file_name=f"filtered_tickets_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            
+            # Detailed ticket view
+            st.divider()
+            st.subheader("🔍 Detailed Ticket View")
+            
+            if len(filtered_df) > 0:
+                ticket_ids = filtered_df['ticket_id'].tolist() if 'ticket_id' in filtered_df.columns else list(range(len(filtered_df)))
+                selected_ticket_id = st.selectbox("Select ticket to view details", ticket_ids)
+                
+                if 'ticket_id' in filtered_df.columns:
+                    selected_ticket = filtered_df[filtered_df['ticket_id'] == selected_ticket_id].iloc[0]
+                else:
+                    selected_ticket = filtered_df.iloc[selected_ticket_id]
+                
+                # Display ticket details
+                col1, col2 = st.columns([2, 1])
+                
+                with col1:
+                    st.write("**Full Message:**")
+                    st.text_area("", value=selected_ticket.get('customer_message', 'N/A'), height=150, disabled=True)
+                
+                with col2:
+                    st.write("**Ticket Information:**")
+                    for col in selected_ticket.index:
+                        if col != 'customer_message':
+                            st.write(f"**{col.replace('_', ' ').title()}:** {selected_ticket[col]}")
+        
+        else:
+            st.warning("No ticket data found. Please ensure data files are available in the data directory or process some tickets in the Batch Processing tab.")
+            
+            # Show expected data structure
+            st.subheader("Expected Data Structure")
+            st.write("The system looks for CSV files with the following structure:")
+            
+            expected_structure = pd.DataFrame({
+                'Column': ['ticket_id', 'customer_message', 'category', 'timestamp', 'priority', 'channel'],
+                'Description': [
+                    'Unique identifier for the ticket',
+                    'The customer\'s message/complaint',
+                    'Category of the ticket',
+                    'When the ticket was created',
+                    'Priority level (High, Medium, Low)',
+                    'Communication channel (Email, Chat, Phone)'
+                ],
+                'Required': ['Yes', 'Yes', 'Yes', 'No', 'No', 'No']
+            })
+            
+            st.dataframe(expected_structure, use_container_width=True)
     
     with tab4:
         st.header("Model Management")
@@ -443,8 +709,7 @@ def main():
         
         # Human-in-the-loop correction
         st.subheader("Human-in-the-Loop Corrections")
-        st.info("Feature coming soon: Manual correction interface for improving model performance.")
-          # Model retraining
+        st.info("Feature coming soon: Manual correction interface for improving model performance.")        # Model retraining
         st.subheader("Model Retraining")
         if st.button("🔄 Retrain Model"):
             st.info("Feature coming soon: Automated model retraining with corrected data.")
@@ -460,6 +725,9 @@ def main():
 
     with tab8:
         audit_compliance_tab()
+
+    with tab9:
+        ai_response_generator_tab()
 
 # Advanced feature functions
 
@@ -1622,6 +1890,304 @@ def audit_compliance_tab():
                 st.success(f"Audit data exported to {filepath}")
             except Exception as e:
                 st.error(f"Error exporting data: {e}")
+
+def ai_response_generator_tab():
+    """AI Response Generator tab."""
+    st.header("🤖 AI Response Generator")
+    
+    st.markdown("""
+    Generate intelligent responses to customer support tickets using open-source LLMs from Hugging Face.
+    """)
+    
+    # Initialize response generator
+    if 'response_generator' not in st.session_state:
+        with st.spinner("Initializing AI Response Generator..."):
+            try:
+                st.session_state.response_generator = AIResponseGenerator()
+                st.success("AI Response Generator initialized successfully!")
+            except Exception as e:
+                st.error(f"Error initializing AI Response Generator: {str(e)}")
+                st.session_state.response_generator = None
+    
+    response_generator = st.session_state.response_generator
+    
+    if response_generator is None:
+        st.warning("AI Response Generator is not available. Please check the installation.")
+        return
+    
+    # Configuration Section
+    st.subheader("Configuration")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Model selection
+        model_options = [
+            "microsoft/DialoGPT-small",
+            "microsoft/DialoGPT-medium", 
+            "google/flan-t5-small",
+            "google/flan-t5-base",
+            "facebook/blenderbot-400M-distill",
+            "gpt2",
+            "gpt2-medium"
+        ]
+        
+        selected_model = st.selectbox(
+            "Select Model",
+            model_options,
+            index=0,
+            help="Choose the Hugging Face model for response generation"
+        )
+        
+        # Generation method
+        generation_method = st.selectbox(
+            "Generation Method",
+            ["hybrid", "template", "ai"],
+            index=0,
+            help="Hybrid uses both templates and AI, Template uses predefined templates, AI uses pure model generation"
+        )
+    
+    with col2:
+        # Generation parameters
+        temperature = st.slider(
+            "Temperature",
+            min_value=0.1,
+            max_value=2.0,
+            value=0.7,
+            step=0.1,
+            help="Controls randomness in generation (lower = more deterministic)"
+        )
+        
+        max_length = st.slider(
+            "Max Response Length",
+            min_value=50,
+            max_value=300,
+            value=150,
+            step=10,
+            help="Maximum length of generated responses"
+        )
+    
+    # Switch model if needed
+    if selected_model != response_generator.model_name:
+        if st.button("Switch Model"):
+            with st.spinner(f"Switching to {selected_model}..."):
+                try:
+                    response_generator.switch_model(selected_model)
+                    st.success(f"Switched to {selected_model}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error switching model: {str(e)}")
+    
+    st.divider()
+    
+    # Response Generation Section
+    st.subheader("Generate Response")
+    
+    # Input fields
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        ticket_text = st.text_area(
+            "Customer Ticket",
+            height=150,
+            placeholder="Enter the customer support ticket text here...",
+            help="Paste or type the customer's support ticket"
+        )
+    
+    with col2:
+        customer_name = st.text_input(
+            "Customer Name",
+            value="Customer",
+            help="Customer's name for personalization"
+        )
+        
+        predicted_category = st.selectbox(
+            "Ticket Category",
+            ["Technical Support", "Billing", "Account", "Product", "General Inquiry", "Complaint"],
+            help="Select or predict the ticket category"
+        )
+        
+        urgency = st.selectbox(
+            "Urgency Level",
+            ["low", "medium", "high"],
+            index=1,
+            help="Select the urgency level"
+        )
+        
+        confidence = st.slider(
+            "Prediction Confidence",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.85,
+            step=0.05,
+            help="Confidence score for the prediction"
+        )
+    
+    # Generate button
+    if st.button("Generate Response", type="primary", use_container_width=True):
+        if not ticket_text.strip():
+            st.warning("Please enter a ticket text.")
+        else:
+            with st.spinner("Generating response..."):
+                try:
+                    # Update generator parameters
+                    response_generator.temperature = temperature
+                    response_generator.max_length = max_length
+                    
+                    # Generate response
+                    response = response_generator.generate_response(
+                        ticket_text=ticket_text,
+                        predicted_category=predicted_category,
+                        confidence=confidence,
+                        urgency=urgency,
+                        customer_name=customer_name,
+                        generation_method=generation_method
+                    )
+                    
+                    # Display results
+                    st.success("Response generated successfully!")
+                    
+                    # Response display
+                    st.subheader("Generated Response")
+                    st.write(response.response_text)
+                    
+                    # Response metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Confidence Score", f"{response.confidence_score:.2f}")
+                    
+                    with col2:
+                        st.metric("Method", response.generation_method.title())
+                    
+                    with col3:
+                        st.metric("Template Used", response.template_used)
+                    
+                    with col4:
+                        escalation_color = "red" if response.escalation_recommended else "green"
+                        st.metric("Escalation", "Yes" if response.escalation_recommended else "No")
+                    
+                    # Suggested actions
+                    if response.suggested_actions:
+                        st.subheader("Suggested Actions")
+                        for i, action in enumerate(response.suggested_actions, 1):
+                            st.write(f"{i}. {action}")
+                    
+                    # Metadata
+                    with st.expander("Response Metadata"):
+                        st.json(response.metadata)
+                    
+                except Exception as e:
+                    st.error(f"Error generating response: {str(e)}")
+                    st.exception(e)
+    
+    st.divider()
+    
+    # Batch Processing Section
+    st.subheader("Batch Response Generation")
+    
+    st.markdown("Upload a CSV file with ticket data for batch processing.")
+    
+    uploaded_file = st.file_uploader(
+        "Choose CSV file",
+        type="csv",
+        help="CSV should contain columns: ticket_text, category, urgency, customer_name"
+    )
+    
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.write("Preview of uploaded data:")
+            st.dataframe(df.head())
+            
+            required_columns = ['ticket_text']
+            optional_columns = ['category', 'urgency', 'customer_name']
+            
+            if all(col in df.columns for col in required_columns):
+                if st.button("Generate Batch Responses"):
+                    with st.spinner("Processing batch requests..."):
+                        try:
+                            # Prepare batch data
+                            batch_data = []
+                            for _, row in df.iterrows():
+                                batch_data.append({
+                                    'ticket_text': row['ticket_text'],
+                                    'category': row.get('category', 'General Inquiry'),
+                                    'urgency': row.get('urgency', 'medium'),
+                                    'customer_name': row.get('customer_name', 'Customer')
+                                })
+                            
+                            # Generate responses
+                            responses = response_generator.batch_generate_responses(
+                                batch_data, generation_method=generation_method
+                            )
+                            
+                            # Create results DataFrame
+                            results_df = pd.DataFrame([
+                                {
+                                    'Original_Ticket': data['ticket_text'],
+                                    'Generated_Response': resp.response_text,
+                                    'Confidence': resp.confidence_score,
+                                    'Method': resp.generation_method,
+                                    'Template': resp.template_used,
+                                    'Escalation_Recommended': resp.escalation_recommended
+                                }
+                                for data, resp in zip(batch_data, responses)
+                            ])
+                            
+                            st.success(f"Generated {len(responses)} responses!")
+                            st.dataframe(results_df)
+                            
+                            # Download results
+                            csv = results_df.to_csv(index=False)
+                            st.download_button(
+                                label="Download Results",
+                                data=csv,
+                                file_name=f"batch_responses_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv"
+                            )
+                            
+                        except Exception as e:
+                            st.error(f"Error processing batch: {str(e)}")
+            else:
+                st.error(f"CSV must contain columns: {required_columns}")
+                
+        except Exception as e:
+            st.error(f"Error reading CSV file: {str(e)}")
+    
+    st.divider()
+    
+    # Statistics Section
+    st.subheader("Response Statistics")
+    
+    try:
+        stats = response_generator.get_response_statistics()
+        
+        if stats['total_responses'] > 0:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Responses", stats['total_responses'])
+            
+            with col2:
+                st.metric("Average Confidence", f"{stats['average_confidence']:.2f}")
+            
+            with col3:
+                st.metric("Escalation Rate", f"{stats['escalation_rate']:.1f}%")
+            
+            # Method distribution
+            if stats['method_distribution']:
+                st.subheader("Generation Method Distribution")
+                method_df = pd.DataFrame(list(stats['method_distribution'].items()), 
+                                       columns=['Method', 'Count'])
+                fig = px.pie(method_df, values='Count', names='Method', 
+                           title="Response Generation Methods")
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No responses generated yet. Generate some responses to see statistics.")
+            
+    except Exception as e:
+        st.error(f"Error loading statistics: {str(e)}")
 
 if __name__ == "__main__":
     main()

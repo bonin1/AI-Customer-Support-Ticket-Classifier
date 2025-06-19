@@ -60,10 +60,17 @@ except ImportError:
 # Document processing
 try:
     import fitz  # PyMuPDF
-    from docx import Document
-    DOCUMENT_AVAILABLE = True
+    PYMUPDF_AVAILABLE = True
 except ImportError:
-    DOCUMENT_AVAILABLE = False
+    PYMUPDF_AVAILABLE = False
+
+try:
+    from docx import Document
+    PYTHON_DOCX_AVAILABLE = True
+except ImportError:
+    PYTHON_DOCX_AVAILABLE = False
+
+DOCUMENT_AVAILABLE = PYMUPDF_AVAILABLE or PYTHON_DOCX_AVAILABLE
 
 # Core components
 from predict import TicketClassifier
@@ -434,7 +441,6 @@ class MultiModalClassifier:
             # Simple speech detection (this would need a proper ASR system)
             # For now, we'll simulate transcription
             transcription = f"[Audio detected: {duration:.1f}s, tempo: {tempo:.1f}]"
-            
             return {
                 'transcription': transcription,
                 'duration_seconds': duration,
@@ -453,12 +459,27 @@ class MultiModalClassifier:
     
     def _process_documents(self, attachment_paths: List[str]) -> Dict[str, Any]:
         """Process document attachments."""
+        if not attachment_paths:
+            return {
+                'extracted_text': '',
+                'document_types': [],
+                'document_count': 0,
+                'confidence': 0.0,
+                'error': 'No documents provided'
+            }
+        
         extracted_texts = []
         document_types = []
         total_confidence = 0.0
+        processing_errors = []
         
         for doc_path in attachment_paths[:10]:  # Limit to 10 documents
             try:
+                # Check if file exists
+                if not os.path.exists(doc_path):
+                    processing_errors.append(f"File not found: {doc_path}")
+                    continue
+                
                 # Determine document type
                 mime_type, _ = mimetypes.guess_type(doc_path)
                 doc_type = mime_type or 'unknown'
@@ -468,57 +489,105 @@ class MultiModalClassifier:
                 confidence = 0.0
                 
                 # PDF processing
-                if doc_path.lower().endswith('.pdf') and DOCUMENT_AVAILABLE:
-                    try:
-                        doc = fitz.open(doc_path)
-                        text_parts = []
-                        for page in doc:
-                            text_parts.append(page.get_text())
-                        extracted_text = '\n'.join(text_parts)
-                        confidence = 0.9
-                        doc.close()
-                    except Exception as e:
-                        self.logger.warning(f"PDF processing failed: {str(e)}")
+                if doc_path.lower().endswith('.pdf'):
+                    if PYMUPDF_AVAILABLE:
+                        try:
+                            doc = fitz.open(doc_path)
+                            text_parts = []
+                            for page in doc:
+                                text_parts.append(page.get_text())
+                            extracted_text = '\n'.join(text_parts)
+                            confidence = 0.9
+                            doc.close()
+                        except Exception as e:
+                            processing_errors.append(f"PDF processing failed for {doc_path}: {str(e)}")
+                    else:
+                        processing_errors.append("PDF processing not available. Install PyMuPDF: pip install PyMuPDF")
                 
                 # DOCX processing
-                elif doc_path.lower().endswith('.docx') and DOCUMENT_AVAILABLE:
-                    try:
-                        doc = Document(doc_path)
-                        text_parts = [paragraph.text for paragraph in doc.paragraphs]
-                        extracted_text = '\n'.join(text_parts)
-                        confidence = 0.9
-                    except Exception as e:
-                        self.logger.warning(f"DOCX processing failed: {str(e)}")
+                elif doc_path.lower().endswith('.docx'):
+                    if PYTHON_DOCX_AVAILABLE:
+                        try:
+                            doc = Document(doc_path)
+                            text_parts = [paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()]
+                            extracted_text = '\n'.join(text_parts)
+                            confidence = 0.9
+                        except Exception as e:
+                            processing_errors.append(f"DOCX processing failed for {doc_path}: {str(e)}")
+                    else:
+                        processing_errors.append("DOCX processing not available. Install python-docx: pip install python-docx")
                 
                 # Plain text files
-                elif doc_path.lower().endswith(('.txt', '.log', '.csv')):
+                elif doc_path.lower().endswith(('.txt', '.log', '.csv', '.json', '.xml', '.html')):
                     try:
+                        # Try UTF-8 first
                         with open(doc_path, 'r', encoding='utf-8') as f:
                             extracted_text = f.read()
                         confidence = 1.0
                     except UnicodeDecodeError:
                         try:
+                            # Fallback to latin-1
                             with open(doc_path, 'r', encoding='latin-1') as f:
                                 extracted_text = f.read()
                             confidence = 0.8
                         except Exception as e:
-                            self.logger.warning(f"Text file processing failed: {str(e)}")
+                            processing_errors.append(f"Text file processing failed for {doc_path}: {str(e)}")
+                
+                # Image files - try OCR if available
+                elif doc_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff')):
+                    if OCR_AVAILABLE:
+                        try:
+                            # Use existing OCR functionality
+                            ocr_result = self._extract_text_from_image(doc_path)
+                            if 'extracted_text' in ocr_result:
+                                extracted_text = ocr_result['extracted_text']
+                                confidence = ocr_result.get('confidence', 0.7)
+                            else:
+                                processing_errors.append(f"OCR failed for {doc_path}: {ocr_result.get('error', 'Unknown error')}")
+                        except Exception as e:
+                            processing_errors.append(f"OCR processing failed for {doc_path}: {str(e)}")
+                    else:
+                        processing_errors.append(f"OCR not available for image {doc_path}. Install tesseract or easyocr")
+                
+                else:
+                    processing_errors.append(f"Unsupported file type: {doc_path}")
                 
                 if extracted_text.strip():
-                    extracted_texts.append(extracted_text[:5000])  # Limit text length
+                    # Limit text length and clean up
+                    cleaned_text = extracted_text.strip()[:5000]  
+                    extracted_texts.append(cleaned_text)
                     total_confidence += confidence
                 
             except Exception as e:
-                self.logger.error(f"Failed to process document {doc_path}: {str(e)}")
+                processing_errors.append(f"Failed to process document {doc_path}: {str(e)}")
+                self.logger.error(f"Document processing error: {str(e)}")
         
-        avg_confidence = total_confidence / len(attachment_paths) if attachment_paths else 0.0
+        # Calculate average confidence
+        processed_docs = len([t for t in extracted_texts if t.strip()])
+        avg_confidence = total_confidence / processed_docs if processed_docs > 0 else 0.0
         
-        return {
-            'extracted_text': '\n'.join(extracted_texts),
+        # Combine all extracted text
+        combined_text = '\n\n'.join(extracted_texts)
+        
+        result = {
+            'extracted_text': combined_text,
             'document_types': document_types,
             'document_count': len(attachment_paths),
-            'confidence': avg_confidence
+            'processed_count': processed_docs,
+            'confidence': avg_confidence,
+            'capabilities': {
+                'pdf_support': PYMUPDF_AVAILABLE,
+                'docx_support': PYTHON_DOCX_AVAILABLE,
+                'ocr_support': OCR_AVAILABLE
+            }
         }
+        
+        if processing_errors:
+            result['warnings'] = processing_errors
+            self.logger.warning(f"Document processing warnings: {processing_errors}")
+        
+        return result
+        
     
     def _decode_base64_image(self, base64_string: str) -> Image.Image:
         """Decode base64 encoded image."""

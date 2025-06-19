@@ -12,6 +12,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import json
 import time
+import logging
 from typing import Dict, Any, List
 
 # Add src directory to path
@@ -184,6 +185,12 @@ def display_single_prediction(result: Dict[str, Any]):
 def main():
     """Main application function."""
     
+    # Initialize session state early
+    if 'streaming_results' not in st.session_state:
+        st.session_state.streaming_results = []
+    if 'multimodal_results' not in st.session_state:
+        st.session_state.multimodal_results = []
+    
     # Header
     st.markdown('<h1 class="main-header">🎫 AI Customer Support Ticket Classifier</h1>', 
                 unsafe_allow_html=True)
@@ -203,34 +210,51 @@ def main():
         "Select Model",
         available_models,
         help="Choose a trained model for classification"
-    )
-    
-    # Load classifier
+    )    # Load classifier
     classifier = load_classifier(selected_model)
     if classifier is None:
         st.error("Failed to load the selected model.")
         return
     
-    # Model info    with st.sidebar.expander("Model Information"):
+    # Store classifier in session state for use in tab functions
+    # Clear existing processors if model changed
+    if st.session_state.get('selected_model') != selected_model:
+        # Clear processors that depend on the classifier
+        keys_to_clear = ['streaming_processor', 'multimodal_classifier', 'response_generator']
+        for key in keys_to_clear:
+            if key in st.session_state:
+                del st.session_state[key]
+    
+    st.session_state.classifier = classifier
+    st.session_state.selected_model = selected_model
+      # Model info
+    with st.sidebar.expander("Model Information"):
         model_info = classifier.get_model_info()
         st.json(model_info)
     
-    # Main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11 = st.tabs([
-        "🔍 Single Prediction",
-        "📋 Batch Processing", 
-        "📊 Analytics Dashboard",
-        "🔧 Model Management",
-        "🕵️ Data Drift Monitor",
-        "🔄 Online Learning",
-        "🏗️ Feature Engineering",
-        "📋 Audit & Compliance",
-        "🤖 AI Response Generator",
-        "📡 Real-time Streaming",
-        "🎭 Multi-modal Processing"
-    ])
+    # Navigation menu in sidebar
+    st.sidebar.divider()
+    st.sidebar.subheader("Navigation")
     
-    with tab1:
+    selected_tab = st.sidebar.selectbox(
+        "Select Feature",
+        [
+            "🔍 Single Prediction",
+            "📋 Batch Processing", 
+            "📊 Analytics Dashboard",
+            "🔧 Model Management",
+            "🕵️ Data Drift Monitor",
+            "🔄 Online Learning",
+            "🏗️ Feature Engineering",
+            "📋 Audit & Compliance",
+            "🤖 AI Response Generator",
+            "📡 Real-time Streaming",
+            "🎭 Multi-modal Processing"
+        ],
+        index=0
+    )
+      # Render selected tab content
+    if selected_tab == "🔍 Single Prediction":
         st.header("Single Ticket Classification")
         
         # Text input
@@ -257,10 +281,9 @@ def main():
                     with st.expander("Processed Text"):
                         st.code(result.get('processed_text', ''))
         
-        elif predict_button:
-            st.warning("Please enter a ticket message.")
+        elif predict_button:            st.warning("Please enter a ticket message.")
     
-    with tab2:
+    elif selected_tab == "📋 Batch Processing":
         st.header("Batch Ticket Processing")
         
         # File upload
@@ -350,7 +373,8 @@ def main():
             
             except Exception as e:
                 st.error(f"Error processing file: {e}")
-    with tab3:
+    
+    elif selected_tab == "📊 Analytics Dashboard":
         st.header("📊 Comprehensive Analytics Dashboard")
         
         # Load all available ticket data
@@ -676,69 +700,33 @@ def main():
                     'When the ticket was created',
                     'Priority level (High, Medium, Low)',
                     'Communication channel (Email, Chat, Phone)'
-                ],
-                'Required': ['Yes', 'Yes', 'Yes', 'No', 'No', 'No']
+                ],                'Required': ['Yes', 'Yes', 'Yes', 'No', 'No', 'No']
             })
             
             st.dataframe(expected_structure, use_container_width=True)
     
-    with tab4:
-        st.header("Model Management")
-        
-        # Model comparison
-        st.subheader("Available Models")
-        
-        models_data = []
-        for model_name in available_models:
-            try:
-                temp_classifier = load_classifier(model_name)
-                info = temp_classifier.get_model_info()
-                models_data.append({
-                    'Model Name': model_name,
-                    'Type': info.get('model_type', 'Unknown'),
-                    'Accuracy': info.get('test_accuracy', 'N/A'),
-                    'Classes': info.get('num_classes', 'N/A'),
-                    'Training Samples': info.get('training_samples', 'N/A')
-                })
-            except Exception:
-                models_data.append({
-                    'Model Name': model_name,
-                    'Type': 'Unknown',
-                    'Accuracy': 'N/A',
-                    'Classes': 'N/A',
-                    'Training Samples': 'N/A'
-                })
-        
-        if models_data:
-            models_df = pd.DataFrame(models_data)
-            st.dataframe(models_df, use_container_width=True)
-        
-        # Human-in-the-loop correction
-        st.subheader("Human-in-the-Loop Corrections")
-        st.info("Feature coming soon: Manual correction interface for improving model performance.")        # Model retraining
-        st.subheader("Model Retraining")
-        if st.button("🔄 Retrain Model"):
-            st.info("Feature coming soon: Automated model retraining with corrected data.")
+    elif selected_tab == "🔧 Model Management":
+        model_management_tab()
 
-    with tab5:
+    elif selected_tab == "🕵️ Data Drift Monitor":
         data_drift_monitor_tab()
 
-    with tab6:
+    elif selected_tab == "🔄 Online Learning":
         online_learning_tab()
 
-    with tab7:
-        
+    elif selected_tab == "🏗️ Feature Engineering":        
         feature_engineering_tab()
-    with tab8:
+        
+    elif selected_tab == "📋 Audit & Compliance":
         audit_compliance_tab()
 
-    with tab9:
+    elif selected_tab == "🤖 AI Response Generator":
         ai_response_generator_tab()
     
-    with tab10:
+    elif selected_tab == "📡 Real-time Streaming":
         streaming_processing_tab()
     
-    with tab11:
+    elif selected_tab == "🎭 Multi-modal Processing":
         multimodal_processing_tab()
 
 # Advanced feature functions
@@ -2210,23 +2198,23 @@ def streaming_processing_tab():
     st.markdown("""
     Process customer support tickets in real-time using streaming data sources.
     """)
-    
-    # Initialize streaming processor
+      # Initialize streaming processor
     if 'streaming_processor' not in st.session_state:
         try:
             classifier = st.session_state.get('classifier')
-            if classifier:
-                response_generator = st.session_state.get('response_generator')
-                st.session_state.streaming_processor = StreamingProcessor(
-                    classifier=classifier,
-                    response_generator=response_generator,
-                    enable_monitoring=True,
-                    enable_drift_detection=True
-                )
-                st.success("Streaming processor initialized!")
-            else:
+            if not classifier:
                 st.error("No classifier available. Please load a model first.")
+                st.info("Go to the 'Single Prediction' tab to load a model.")
                 return
+                
+            response_generator = st.session_state.get('response_generator')
+            st.session_state.streaming_processor = StreamingProcessor(
+                classifier=classifier,
+                response_generator=response_generator,
+                enable_monitoring=True,
+                enable_drift_detection=True
+            )
+            st.success("Streaming processor initialized!")
         except Exception as e:
             st.error(f"Error initializing streaming processor: {str(e)}")
             return
@@ -2254,8 +2242,7 @@ def streaming_processing_tab():
         
         enable_simulation = st.checkbox("Ticket Simulation", value=True)
         simulation_interval = st.slider("Simulation Interval (seconds)", min_value=1, max_value=30, value=5)
-    
-    # Control Section
+      # Control Section
     st.subheader("Streaming Control")
     
     col1, col2, col3 = st.columns(3)
@@ -2263,19 +2250,13 @@ def streaming_processing_tab():
     with col1:
         if st.button("🚀 Start Streaming", type="primary"):
             try:
-                streaming_processor.start_streaming()
-                
-                # Add result callback to store results in session state
+                # Initialize streaming results before starting
                 if 'streaming_results' not in st.session_state:
                     st.session_state.streaming_results = []
                 
-                def result_callback(result):
-                    st.session_state.streaming_results.append(result)
-                    if len(st.session_state.streaming_results) > 100:  # Keep only last 100
-                        st.session_state.streaming_results = st.session_state.streaming_results[-100:]
-                
-                streaming_processor.add_result_callback(result_callback)
+                streaming_processor.start_streaming()
                 st.success("Streaming started!")
+                st.info("Add tickets manually below to see results.")
                 
             except Exception as e:
                 st.error(f"Error starting streaming: {str(e)}")
@@ -2325,7 +2306,7 @@ def streaming_processing_tab():
         with col1:
             ticket_text = st.text_area("Ticket Message", height=100)
         
-        with col2:
+        with col2:            
             customer_id = st.text_input("Customer ID", value="test_customer")
             priority = st.selectbox("Priority", ["low", "medium", "high"])
             channel = st.selectbox("Channel", ["manual", "email", "chat", "phone"])
@@ -2333,6 +2314,11 @@ def streaming_processing_tab():
         if st.form_submit_button("Add Ticket to Stream"):
             if ticket_text.strip():
                 try:
+                    # Initialize streaming results if not exists
+                    if 'streaming_results' not in st.session_state:
+                        st.session_state.streaming_results = []
+                    
+                    # Process ticket directly (synchronous for manual input)
                     ticket = StreamingTicket(
                         ticket_id=f"manual_{int(time.time())}",
                         customer_message=ticket_text,
@@ -2342,11 +2328,40 @@ def streaming_processing_tab():
                         customer_id=customer_id
                     )
                     
-                    streaming_processor.add_ticket(ticket)
-                    st.success("Ticket added to stream!")
+                    # Get the classifier and process the ticket
+                    classifier = st.session_state.get('classifier')
+                    if classifier:
+                        with st.spinner("Processing ticket..."):
+                            # Process the ticket directly
+                            import time as time_module
+                            start_time = time_module.time()
+                            
+                            prediction = classifier.predict_single(ticket.customer_message, return_probabilities=True)
+                            processing_time = (time_module.time() - start_time) * 1000
+                            
+                            # Create result
+                            from streaming_processor import StreamingResult
+                            result = StreamingResult(
+                                ticket_id=ticket.ticket_id,
+                                predicted_category=prediction.get('predicted_category', 'Unknown'),
+                                confidence=prediction.get('confidence', 0.0),
+                                processing_time_ms=processing_time,
+                                escalation_required=prediction.get('confidence', 0.0) < 0.7,
+                                drift_detected=False,
+                                timestamp=datetime.now()
+                            )
+                            
+                            # Store result in session state
+                            st.session_state.streaming_results.append(result)
+                            if len(st.session_state.streaming_results) > 100:
+                                st.session_state.streaming_results = st.session_state.streaming_results[-100:]
+                    
+                    st.success("Ticket processed and added to results!")
+                    st.rerun()  # Refresh to show the new result
                     
                 except Exception as e:
-                    st.error(f"Error adding ticket: {str(e)}")
+                    st.error(f"Error processing ticket: {str(e)}")
+                    st.exception(e)
             else:
                 st.warning("Please enter a ticket message.")
     
@@ -2391,23 +2406,23 @@ def multimodal_processing_tab():
     st.markdown("""
     Process customer support tickets with multiple data types: text, images, audio, and documents.
     """)
-    
-    # Initialize multi-modal classifier
+      # Initialize multi-modal classifier
     if 'multimodal_classifier' not in st.session_state:
         try:
             classifier = st.session_state.get('classifier')
-            if classifier:
-                st.session_state.multimodal_classifier = MultiModalClassifier(
-                    text_classifier=classifier,
-                    enable_ocr=True,
-                    enable_image_classification=True,
-                    enable_audio_processing=True,
-                    enable_document_parsing=True
-                )
-                st.success("Multi-modal classifier initialized!")
-            else:
+            if not classifier:
                 st.error("No text classifier available. Please load a model first.")
+                st.info("Go to the 'Single Prediction' tab to load a model.")
                 return
+                
+            st.session_state.multimodal_classifier = MultiModalClassifier(
+                text_classifier=classifier,
+                enable_ocr=True,
+                enable_image_classification=True,
+                enable_audio_processing=True,
+                enable_document_parsing=True
+            )
+            st.success("Multi-modal classifier initialized!")
         except Exception as e:
             st.error(f"Error initializing multi-modal classifier: {str(e)}")
             return
@@ -2574,7 +2589,6 @@ def multimodal_processing_tab():
                                     st.write(f"{i}. {classification['label']} (confidence: {classification['confidence']:.2f})")
                         else:
                             st.info("No image features extracted")
-                    
                     with st.expander("Audio Features"):
                         if result.extracted_features.audio_features:
                             st.json(result.extracted_features.audio_features)
@@ -2585,15 +2599,59 @@ def multimodal_processing_tab():
                         if result.extracted_features.document_features:
                             features = result.extracted_features.document_features
                             
+                            # Show document processing capabilities
+                            if 'capabilities' in features:
+                                st.write("**Document Processing Capabilities:**")
+                                caps = features['capabilities']
+                                cap_col1, cap_col2, cap_col3 = st.columns(3)
+                                with cap_col1:
+                                    st.write(f"PDF: {'✅' if caps.get('pdf_support') else '❌'}")
+                                with cap_col2:
+                                    st.write(f"DOCX: {'✅' if caps.get('docx_support') else '❌'}")
+                                with cap_col3:
+                                    st.write(f"OCR: {'✅' if caps.get('ocr_support') else '❌'}")
+                            
+                            # Show processing statistics
+                            if 'processed_count' in features:
+                                st.write(f"**Processing Statistics:**")
+                                stat_col1, stat_col2, stat_col3 = st.columns(3)
+                                with stat_col1:
+                                    st.metric("Documents Uploaded", features.get('document_count', 0))
+                                with stat_col2:
+                                    st.metric("Successfully Processed", features.get('processed_count', 0))
+                                with stat_col3:
+                                    st.metric("Processing Confidence", f"{features.get('confidence', 0):.2f}")
+                            
+                            # Show warnings if any
+                            if 'warnings' in features and features['warnings']:
+                                st.warning("**Processing Warnings:**")
+                                for warning in features['warnings']:
+                                    st.write(f"⚠️ {warning}")
+                            
+                            # Show extracted text
                             if features.get('extracted_text'):
                                 st.write("**Extracted Text from Documents:**")
-                                st.text_area("", features['extracted_text'][:1000] + "..." if len(features['extracted_text']) > 1000 else features['extracted_text'], height=200, disabled=True)
+                                text = features['extracted_text']
+                                display_text = text[:1000] + "..." if len(text) > 1000 else text
+                                st.text_area("", display_text, height=200, disabled=True)
+                                
+                                if len(text) > 1000:
+                                    st.info(f"Showing first 1000 characters of {len(text)} total characters")
                             
+                            # Show document types
                             if features.get('document_types'):
-                                st.write("**Document Types:**")
-                                st.write(", ".join(features['document_types']))
+                                st.write("**Document Types Detected:**")
+                                for i, doc_type in enumerate(features['document_types'], 1):
+                                    st.write(f"{i}. {doc_type}")
                         else:
                             st.info("No document features extracted")
+                            
+                            # Show helpful information about document processing
+                            st.write("**Document Processing Requirements:**")
+                            st.write("- PDF files: Requires `PyMuPDF` (pip install PyMuPDF)")
+                            st.write("- DOCX files: Requires `python-docx` (pip install python-docx)")
+                            st.write("- Image files: Requires OCR support (tesseract or easyocr)")
+                            st.write("- Text files: Supported natively (.txt, .log, .csv, .json, .xml)")
                     
                     # Combined text
                     with st.expander("Combined Text for Classification"):

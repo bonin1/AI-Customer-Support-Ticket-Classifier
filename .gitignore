@@ -116,7 +116,6 @@ cython_debug/
 .abstra/
 
 
-# Ruff stuff:
 .ruff_cache/
 
 # PyPI configuration file

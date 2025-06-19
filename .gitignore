@@ -77,7 +77,6 @@ profile_default/
 ipython_config.py
 
 
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
 #poetry.lock
 
 # pdm

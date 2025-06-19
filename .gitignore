@@ -76,7 +76,6 @@ target/
 profile_default/
 ipython_config.py
 
-#   intended to run in multiple environments; otherwise, check them in:
 # .python-version
 
 # pipenv

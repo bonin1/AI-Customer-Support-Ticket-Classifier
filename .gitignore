@@ -113,7 +113,6 @@ dmypy.json
 
 cython_debug/
 
-# Learn more at https://abstra.io/docs
 .abstra/
 
 # Visual Studio Code

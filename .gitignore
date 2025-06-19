@@ -113,7 +113,6 @@ dmypy.json
 
 cython_debug/
 
-#.idea/
 
 # Abstra
 # Abstra is an AI-powered process automation framework.

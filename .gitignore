@@ -115,7 +115,6 @@ cython_debug/
 
 .abstra/
 
-#  you could uncomment the following to ignore the enitre vscode folder
 # .vscode/
 
 # Ruff stuff:
